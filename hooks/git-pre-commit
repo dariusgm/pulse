@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Pulse pre-commit, written by `pulse setup --git-hook`; `pulse setup --remove` takes it out.
 #   1. nothing with mode = "off" in .pulse/config.toml
-#   2. no commits on protected branches (git config pulse.protected-branches)
+#   2. no commits on protected branches (git config pulse.protected-branches, else main master
+#      develop dev) nor on the base branch (base_branch in .pulse/config.toml, else origin's default)
 #   3. pulse check stays clean; skipped without a Pulse CLI
 # Bypass a single commit with --no-verify.
 set -u
@@ -12,7 +13,12 @@ if grep -Eqs "^[[:space:]]*mode[[:space:]]*=[[:space:]]*[\"']off[\"']" .pulse/co
 fi
 branch=$(git symbolic-ref --short -q HEAD || echo "")   # also names an unborn branch
 protected=$(git config --get pulse.protected-branches || echo "main master develop dev")
-for p in $protected; do
+# the top-level key only, as Pulse reads it: sed stops at the first [table]
+base=$(sed -nE -e '/^[[:space:]]*\[/q' \
+  -e "s/^[[:space:]]*base_branch[[:space:]]*=[[:space:]]*[\"']([^\"']+)[\"'].*/\1/p" .pulse/config.toml 2>/dev/null \
+  | head -n 1)
+[ -n "$base" ] || base=$(git symbolic-ref -q refs/remotes/origin/HEAD | sed 's#^refs/remotes/origin/##')
+for p in $protected ${base:+"$base"}; do     # the base as one word, never globbed
   if [ "$branch" = "$p" ]; then
     echo "pulse: commits on $branch are blocked; work on a branch like feat/<n>-<slug>."
     exit 1

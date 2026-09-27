@@ -23,7 +23,7 @@ The commands are spelled as in Claude Code, on this page and on the map. In Code
 | The project BA is a draft | `/pulse-ba` in Validation Mode |
 | A new epic or feature is wanted | `/pulse-ba` for its item BA |
 | A validated project BA or an item BA exists, no epics or features yet | [`/pulse-re`](./pulse-re): it commits and pushes the specs, registers them with `pulse new --spec`, commits and pushes what that wrote, and opens a pull request |
-| Specs wait for approval ("not approved" in the ramp) | read each spec, merge the pull request that carries it, then `pulse approve <n>` means build it; `pulse approve` refuses before the merge (R1) and, for a feature, improvement, or fix, while the spec there breaks one of R2 to R6 (an epic needs R1 only) |
+| Specs wait for approval ("not approved" in the ramp) | read each spec, then `pulse approve <n>`, or approve spec in the map, means build it. A spec still in its one open spec pull request is merged into the base branch first, so nobody merges it on GitHub. `pulse approve` refuses a spec in no such pull request (R1) and, for a feature, improvement, or fix, one that breaks one of R2 to R6 (an epic needs R1 only) |
 | Approved items whose spec does not pass `pulse check` (R1 to R6) | [`/pulse-re`](./pulse-re) on that spec |
 | A PLAN waits for a person ("plan waits for you" in the ramp) | read its goal, decisions, and risks; `pulse approve-plan <n>` |
 | Approved items and free slots | [`/pulse-go`](./pulse-go) plans what has no PLAN and builds all of them, [`/pulse-build <n>`](./pulse-build) for one |

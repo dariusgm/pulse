@@ -90,8 +90,8 @@ bug fixes, docs, tests).
 4. Commit the spec on this branch and push, then
    `pulse new feat "<title>" --parent <epic> --spec <path>`. When all
    four answers came in, ask the user whether to approve it. Its spec
-   must be merged into the base branch first; after that merge,
-   `pulse approve <n>` only on the user's yes.
+   reaches the base branch with the merge of this branch; after that
+   merge, `pulse approve <n>` only on the user's yes.
 5. Resume. The commit names the new item.
 
 **Bypass.** If the user says "scratch change, no feature yet", the commit

@@ -285,7 +285,7 @@ Afterwards no `pulse` command is left in `~/.local/bin`: if Pulse stays installe
 
 ## Switch it on in your project
 
-In a session in your project, run `/pulse-setup` (in Codex, `$pulse:pulse-setup`). It writes `.pulse/config.toml`, creates the `pulse:` labels on GitHub once you agree, adds a short Pulse block to the agent files you have (CLAUDE.md, AGENTS.md, and others), and offers the `pulse` command if it is not on your PATH yet. It also offers a git hook: it refuses commits on `main`, `master`, `develop`, and `dev` (or the branches in `git config pulse.protected-branches`) and runs `pulse check` before each commit; `git commit --no-verify` bypasses it once. Details: [/pulse-setup](../guides/pulse-setup) and [Configuration](../reference/configuration).
+In a session in your project, run `/pulse-setup` (in Codex, `$pulse:pulse-setup`). It writes `.pulse/config.toml`, creates the `pulse:` labels on GitHub once you agree, adds a short Pulse block to the agent files you have (CLAUDE.md, AGENTS.md, and others), and offers the `pulse` command if it is not on your PATH yet. It also offers a git hook: it refuses commits on `main`, `master`, `develop`, and `dev` (or the branches in `git config pulse.protected-branches`), always also on your base branch, and runs `pulse check` before each commit; `git commit --no-verify` bypasses it once. Details: [/pulse-setup](../guides/pulse-setup) and [Configuration](../reference/configuration).
 
 Check the command with `pulse --help`.
 

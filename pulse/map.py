@@ -25,7 +25,7 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
-from pulse import archmap, config, dispatch, go, mapstart, presence, ready, setup, spec, state
+from pulse import archmap, config, dispatch, go, mapstart, presence, ready, review, setup, spec, state
 
 WIDTH = 80                      # columns without a terminal, and of the demo page and the GIF (D-45)
 FEWEST, MOST = 60, 160          # the map follows its terminal's width within these
@@ -77,8 +77,9 @@ HELP = """map      ↑ ↓ or j k pick an item, enter or → opens it
 item     its goal, stage, holder, blockers, PR, and plan,
            then what you can do with it now: ↑ ↓ pick,
            enter does it
-         approve: agents plan and build it; unapprove
-           takes that back
+         approve spec: agents plan and build it; a spec
+           still in its pull request is merged into the
+           base first; unapprove takes that back
          approve plan: the agent builds it as that plan
            says; both approvals show what they bind
            first, enter confirms, esc cancels
@@ -86,20 +87,25 @@ item     its goal, stage, holder, blockers, PR, and plan,
            the map runs on (PULSE_EDITOR, else VS Code or
            Cursor, else the system's app)
          prioritize: top of the ramp, one write
-         a, p, o: approve, approve plan, read spec
+         merge: its ready PR into the base branch, enter
+           confirms; read PR opens it in the browser
+         a, p, o: approve spec, approve plan, read spec
 back     q goes back one level, as esc, ← and backspace
            do, and drops what is not written yet
          q quits only on the map, esc never quits it"""
-# what the item view offers, in this order (#55): the words, and what it does
-OFFER = {"approve": ("approve", "agents plan and build it when its turn comes"),
+GATE_ROW = re.compile(r"^\| ([a-z][a-z ]*) \| ([^|\n]+) \|$", re.M)   # a row of pulse go's gate table
+# what the item view can offer (#55): the words, and what it does; offers() puts them in order
+OFFER = {"approve": ("approve spec", "agents plan and build it when its turn comes"),
          "unapprove": ("unapprove", "nobody builds it until you approve it again"),
          "approve-plan": ("approve plan", "the agent builds it as this plan says"),
          "read-plan": ("read plan", "open it in your editor"),
          "top": ("prioritize", "top of the ramp: it gets the next free slot"),
-         "open": ("read spec", "open it in your editor")}
+         "open": ("read spec", "open it in your editor"),
+         "merge": ("merge", "merges its PR into the base branch"),
+         "read-pr": ("read PR", "open it in your browser")}
 # the line an action shows while it runs; the ones not named here only open a window
 DOING = {"rank": "moving #{}…", "approve": "approving #{}…", "unapprove": "taking back the approval of #{}…",
-         "approve-plan": "approving the plan of #{}…"}
+         "approve-plan": "approving the plan of #{}…", "merge": "merging the PR of #{}…"}
 # what opens a chat in VS Code, from its session id (FIX-02-04-03): only a UUID becomes a link (FR-06)
 LINKS = {"claude": "vscode://anthropic.claude-code/open?session={}", "codex": "vscode://openai.chatgpt/local/{}"}
 EDITORS = ("Cursor", "VS Code Insiders")     # where else a chat of the extensions runs, without a link
@@ -348,8 +354,10 @@ def render(vm: dict, frame: int = 0, color: int = True, width: int = WIDTH, sele
             return "error", f"draft {ref}, a gate is red", fix
         if vm["me"] and vm["me"] in pr.get("reviewers", []):
             return "waiting", f"{ref}, needs your review", ("your review", f"review {ref} on GitHub")
-        if mine(i):
-            return "waiting", f"{ref}, waits for merge", ("waits for merge", f"merge {ref} on GitHub")
+        if mine(i) and pr.get("base") not in (None, vm.get("base")):     # stacked: its blocker's PR first
+            return "waiting", f"{ref}, waits for merge", ("waits for merge", f"{ref} waits for the PR it stacks on")
+        if mine(i):                           # merged from its view (#70)
+            return "waiting", f"{ref}, waits for merge", ("waits for merge", f"merge {ref} in its view")
         return "idle", f"{ref}, waits for merge", None
 
     def wants(row):
@@ -364,11 +372,15 @@ def render(vm: dict, frame: int = 0, color: int = True, width: int = WIDTH, sele
             return "idle", ("spec in progress", f"{who or '/pulse-re'} writes the spec of #{n}")
         if row in groups["blocked"]:
             return "idle", None
-        if s == "not approved":               # pulse approve refuses a spec not on the base (R1, D-43)
+        if s == "not approved":               # approve merges a spec still in its one spec PR (R1, #69)
             if n in vm.get("unready", ()):    # or one that breaks R2 to R6 there
                 return "idle", ("spec rule", f"/pulse-re on the spec of #{n}")
-            return "waiting", (s, f"merge the spec of #{n} into the base branch first" if n in vm.get("unmerged", ())
-                               else f"pulse approve {n}, or approve in its view")
+            if n not in vm.get("unmerged", ()):
+                return "waiting", (s, f"pulse approve {n}, or approve spec in its view")
+            pr, why = _spec_pr(by_number.get(n, row), vm.get("base", ""))     # approve merges it (#69)
+            return "waiting", (s, f"pulse approve {n}, or approve spec in its view (merges PR #{pr['number']})" if pr
+                               else f"/pulse-re opens a pull request for the spec of #{n}" if why.startswith("no ")
+                               else f"#{n}: {why}")
         if s.startswith("spec:"):
             return "idle", ("spec rule", f"/pulse-re on the spec of #{n}")
         if s.startswith("plan waits"):
@@ -603,8 +615,9 @@ def once(vm: dict, color) -> str:
 
 
 def offers(vm: dict, seen: dict) -> list:
-    """[(action, words, what it does)]: what the item view offers in the item's stage (#55), in the
-    order of OFFER. An approval that cannot be given now says why in place of what it does."""
+    """[(action, words, what it does)]: what the item view offers in the item's stage (#55): approve or
+    unapprove, merge, approve plan, read PR, read plan, prioritize, read spec. An approval that cannot
+    be given now says why in place of what it does."""
     i = next((x for x in vm["items"] if x["number"] == seen["number"]), None)
     if not i:
         return []
@@ -615,15 +628,20 @@ def offers(vm: dict, seen: dict) -> list:
         why = "not yet: its spec is still being written"
     elif not i.get("spec"):
         why = "not yet: it has no spec, /pulse-re writes one"
-    elif n in vm.get("unmerged", ()):            # pulse approve refuses it too (R1, D-43)
-        why = "not yet: its spec is still on a branch, merge it first"
+    elif n in vm.get("unmerged", ()):            # approve merges its one spec PR first (R1, #69)
+        pr, short = _spec_pr(i, vm.get("base", ""))
+        why = f"merges spec PR #{pr['number']} into {vm.get('base')}, then agents plan and build it" if pr \
+            else f"not yet: {short}"
     elif n in vm.get("unready", ()):
         why = "not yet: its spec breaks a rule, /pulse-re fixes it"
     out = [("approve", why)] if not i["approved"] else [("unapprove", "")] if n in rows else []
+    pr = i.get("pr") or {}                     # ready: what pulse go opens once every gate passed (#70)
+    if pr and not pr.get("draft") and pr.get("checks") != "fail" and pr.get("base") == vm.get("base"):
+        out.append(("merge", f"merges PR #{pr['number']} into {vm['base']}"))
     if n in vm["ramp"].get("plan_waits", ()) or stage.startswith("plan waits"):
         out.append(("approve-plan", ""))
-    out += [("read-plan", "")] * bool(seen.get("plan")) + [("top", "")] * (n in rows[1:]) + \
-        [("open", "")] * bool(i.get("spec"))
+    out += [("read-pr", "")] * bool(pr) + [("read-plan", "")] * bool(seen.get("plan")) + \
+        [("top", "")] * (n in rows[1:]) + [("open", "")] * bool(i.get("spec"))
     return [(a, OFFER[a][0], note or OFFER[a][1]) for a, note in out]
 
 
@@ -678,6 +696,15 @@ def key(ui: dict, picks: list, rows: list, ch: str, acts=()) -> tuple:
     return ui, None
 
 
+def _spec_pr(i: dict, base: str) -> tuple:
+    """(the spec PR approve spec merges, "") or (None, why not yet) in the words of the item view (#69)."""
+    pr, _ = ready.spec_pr(i, base)
+    prs = [p for p in i.get("spec_prs") or () if p["base"] == base]
+    return (pr, "") if pr else (None, "no open pull request carries its spec" if not prs else
+                                f"{len(prs)} open pull requests carry its spec" if len(prs) > 1 else
+                                "its pull request changes more than _devprocess/")
+
+
 def brief(root: Path, vm: dict, action: tuple) -> tuple:
     """What a person reads before a or p approves (F6.08): the goal, what holds it, and for a PLAN
     the digest the approval binds to. (lines, the action Enter confirms), or (why not, None). a
@@ -688,15 +715,38 @@ def brief(root: Path, vm: dict, action: tuple) -> tuple:
     if kind == "unapprove":                   # Enter confirms it too: a stray Enter takes nothing back (#55)
         return [f"take back the approval of #{n} {i.get('title', '')}: nobody builds it until someone "
                 "approves it again"], action
+    if kind == "merge":                       # the finished PR into the base, read afresh on Enter (#70)
+        pr = i.get("pr") or {}
+        goal = _goal(spec.on_base(root, i["spec"]) if i.get("spec") else None)
+        sure = (*action, pr["number"], pr["head"]) if pr.get("head") else action     # Enter merges this one
+        return ([f"merge PR #{pr.get('number')} of #{n} {i.get('title', '')} into {vm.get('base')}",
+                 f"goal: {goal or '-'}", "read PR shows its diff and what departs from the plan"], sure)
     if kind == "approve" and i.get("approved"):
         return [f"#{n} is approved already (pulse approve --undo {n} takes it back)"], None
     text = spec.on_base(root, i["spec"]) if i.get("spec") else None
     if kind == "approve":
-        why = spec.refusal(text, i.get("type"), n, config.base_ref(root))
+        base, merges = config.base_ref(root), []
+        why = spec.refusal(text, i.get("type"), n, base) if text is not None else ""
+        if text is None:                      # its spec PR, merged first (#69): which one, and what comes along
+            branch = vm.get("base") or config.load(root)["base_branch"] or config.default_branch(root)
+            pr, why = ready.spec_pr(i, branch)
+            if not pr:
+                return [f"#{n} not approved: R1 spec missing on the base branch ({base}); {why}"], None
+            shown = _git(str(root), "rev-parse", "--verify", "-q", f"origin/{pr['branch']}^{{commit}}")
+            text = spec.on_base(root, i["spec"], shown or f"origin/{pr['branch']}")
+            action = (*action, shown) if shown else action      # Enter merges this head only (audit M-1)
+            why = spec.refusal(text, i.get("type"), n, f"PR #{pr['number']}",
+                               fix="fix its spec with /pulse-re on its branch; nothing merged")
+            others = [presence.clean(Path(f).name) for f in pr["files"]
+                      if f != i["spec"] and spec.LIKE_ID.match(Path(f).name)]
+            merges = [f"merges spec PR #{pr['number']} into {branch}"
+                      + (" (a draft: it becomes ready first)" if pr["draft"] else "")]
+            merges += [f"brings along, not approved: {', '.join(others)}"] if others else []
         if why:
-            return [f"#{n} not approved: {why}"], None
-        return ([f"approve #{n} {i.get('title', '')}", f"goal: {_goal(text) or '-'}",
-                 f"risk: {ready.hold(text, '').replace('risk: ', '') or 'none'}"], action)
+            return [ready.printable(f"#{n} not approved: {why}")], None
+        return ([ready.printable(line) for line in (f"approve spec #{n} {i.get('title', '')}",
+                 f"goal: {_goal(text) or '-'}", *merges,
+                 f"risk: {ready.hold(text, '').replace('risk: ', '') or 'none'}")], action)
     d, why = ready.approvable(root, vm["items"], config.load(root), n)
     if not d:
         return [why.replace("PLAN", "plan")], None
@@ -746,10 +796,11 @@ def latest(root: Path) -> str:
 
 
 def look(root: Path, vm: dict, n: int) -> dict:
-    """What the item view reads from git: the goal of the spec on the base, and where the PLAN is."""
+    """What the item view reads from git: the goal of the spec on the base, else on the branch of origin
+    that has it (#68), and where the PLAN is."""
     i = next((x for x in vm["items"] if x["number"] == n), {})
     p = ready.plans(root).get(n)
-    return {"number": n, "goal": _goal(spec.on_base(root, i["spec"]) if i.get("spec") else None),
+    return {"number": n, "goal": _goal(spec.find(root, i["spec"])[0] if i.get("spec") else None),
             "plan": p["path"] + (f" on {p['ref']}" if p["ref"] else "") if p else ""}
 
 
@@ -802,9 +853,13 @@ def act(root: Path, vm: dict, action: tuple) -> str:
         for m, value in writes:
             state.set_rank(root, repo, m, value)
         return f"#{n} moved"
-    if kind in ("approve", "unapprove"):
-        state.approve(root, repo, [n], undo=kind == "unapprove")
-        return f"#{n} approved" if kind == "approve" else f"#{n} is no longer approved"
+    if kind == "unapprove":
+        state.approve(root, repo, [n], undo=True)
+        return f"#{n} is no longer approved"
+    if kind == "approve":                 # as pulse approve: a spec still in its PR is merged first (#69)
+        ok, said = ready.approve(root, repo, next((i for i in vm["items"] if i["number"] == n), {"number": n}),
+                                 head=action[2] if len(action) > 2 else None)
+        return (f"#{n} approved" + (f": {said}" if said else "")) if ok else f"#{n} not approved: {said}"
     if kind == "approve-plan":
         d, why = ready.approvable(root, vm["items"], config.load(root), n)
         if not d:
@@ -813,25 +868,102 @@ def act(root: Path, vm: dict, action: tuple) -> str:
             return f"the plan of #{n} changed since you read it; approve plan shows it again"
         state.approve_plan(root, repo, n, d)
         return f"plan of #{n} approved"
+    if kind in ("merge", "read-pr"):
+        i = next((x for x in vm["items"] if x["number"] == n), {})
+        pr = (i.get("pr") or {}).get("number")
+        if not pr:
+            return f"#{n} has no PR"
+        if kind == "merge":                   # the PR and head the confirmation showed (audit M-1)
+            return _merge(root, repo, *(action[2:4] if len(action) > 3 else (pr, None)), vm.get("base"), n)
+        url = re.sub(r"/issues/\d+$", f"/pull/{pr}", i.get("url") or "")     # a link: the system's opener (#61)
+        return _show(url, f"PR #{pr}", opener({})) if "/pull/" in url else f"#{n}: no link to PR #{pr}"
     if kind == "read-plan":
         plan = ready.plans(root).get(n)
         if not plan:
             return f"#{n} has no plan"
         if not plan["ref"]:
             return _show(root / plan["path"], plan["path"])
-        copy = state.cache_dir(root) / "plans" / f"{n}-{Path(plan['path']).name}"   # on its branch only: a copy
-        try:
-            copy.parent.mkdir(parents=True, exist_ok=True)
-            if copy.is_symlink() or copy.exists():
-                copy.unlink()                 # a new file, never written through a link at its place
-            copy.write_text(plan["text"], encoding="utf-8")
-        except OSError as e:
-            return f"no copy of {plan['path']} to read: {e}"
-        return _show(copy, f"a copy of {plan['path']} from {plan['ref']}")
+        return _copy(root, "plans", n, plan["path"], plan["text"], plan["ref"])     # on its branch only
     item = next((i for i in vm["items"] if i["number"] == n), {})
     if not item.get("spec"):
         return f"#{n} has no spec"
-    return _show(root / item["spec"], item["spec"])
+    path = item["spec"]                         # from the issue text: it may point anywhere (#56)
+    here = (root / path).resolve()
+    if not here.is_relative_to(root.resolve()):
+        return f"#{n}: its spec path leads out of the repository; nothing opened"
+    if not path.endswith(".md") or here.suffix != ".md":    # the opener picks a program by it, a link's target
+        return f"#{n}: its spec is no Markdown file; nothing opened"       # too (audit and final check of #68)
+    text, ref = spec.find(root, path)           # what agents plan from, else its branch (#68)
+    if text is None:
+        return _show(root / path, path) if here.is_file() else \
+            f"#{n}: its spec {path} is on no branch of origin and not here"
+    try:
+        same = here.read_text(encoding="utf-8") == text
+    except (OSError, UnicodeDecodeError):
+        same = False
+    return _show(root / path, path) if same else _copy(root, "specs", n, path, text, ref)
+
+
+def _copy(root: Path, kind: str, n: int, path: str, text: str, ref: str) -> str:
+    """Open a copy to read of path as ref has it, named by the item, in the clone's cache: a new file,
+    never written through a link at its place (audit of #55)."""
+    copy = state.cache_dir(root) / kind / f"{n}-{Path(path).name}"
+    try:
+        copy.parent.mkdir(parents=True, exist_ok=True)
+        if copy.is_symlink() or copy.exists():
+            copy.unlink()
+        copy.write_text(text, encoding="utf-8")
+    except OSError as e:
+        return f"no copy of {path} to read: {e}"
+    return _show(copy, f"a copy of {path} from {ref}")
+
+
+def _merge(root: Path, repo: str, pr: int, shown: str, base: str, n: int) -> str:
+    """Merge PR #pr into base as its view offers it (#70): read afresh, only a PR of this repository that
+    is open, ready, into base, without failing checks, at the head the confirmation showed, and whose
+    gates passed on that head: the commit pulse go names in its text, else the review and audit
+    verdicts published on the PR by people who may push (ADR-05); bound to the head it read."""
+    try:
+        v = json.loads(state.gh(["pr", "view", str(pr), "--repo", repo, "--json",
+                                 "state,isDraft,isCrossRepository,baseRefName,headRefOid,body,comments,"
+                                 "statusCheckRollup"]))
+    except (state.StateError, ValueError) as e:
+        return f"PR #{pr} could not be read: {e}"
+    head = v.get("headRefOid") or ""
+    if v.get("isCrossRepository"):           # its author writes its gates line too (audit H-1)
+        return f"PR #{pr} comes from a fork: the map merges only pull requests of this repository"
+    if v.get("state") != "OPEN" or v.get("isDraft") or v.get("baseRefName") != base:
+        return f"PR #{pr} is not a ready pull request into {base}; nothing merged"
+    if shown and head != shown:
+        return f"PR #{pr} moved since merge showed it; nothing merged"
+    if state.checks(v.get("statusCheckRollup") or []) == "fail":     # the board's may be 30 s old (L-1)
+        return f"PR #{pr} has failing checks; nothing merged"
+    body = (v.get("body") or "").replace("\r\n", "\n")      # GitHub keeps a body edited on the web with CRLF
+    newest = {g["gate"]: g["verdict"] for g in review._published(v) if g["commit"] == head}   # oldest first
+    blocked = [g for g in ("review", "audit") if newest.get(g) == "block"]
+    if blocked:                               # the gates line says where they ran, not that they passed
+        return f"PR #{pr}: a gate blocked its last commit ({', '.join(blocked)}); nothing merged"
+    gated = go.GATED.search(body)
+    passed = newest.get("review") == newest.get("audit") == "pass"   # a person's /pulse-build may follow a run
+    if gated and gated.group(1) != head and not passed:   # pulse go takes up a draft, and only a draft
+        try:
+            state.gh(["pr", "ready", str(pr), "--repo", repo, "--undo"])
+        except state.StateError as e:
+            return f"PR #{pr} got commits after its gates ran; nothing merged, and it stays ready: {e}"
+        state.drop_cache(root)
+        return (f"PR #{pr} got commits after its gates ran; nothing merged: it is a draft again, and the next "
+                "pulse go runs its gates")
+    red = [g for g, r in GATE_ROW.findall(body) if not r.strip().startswith("pass")]
+    if gated and not passed and red:         # pulse go writes the line for a red run too (final check)
+        return f"PR #{pr}: its gates did not pass ({', '.join(red)}); nothing merged"
+    if not gated and not passed:             # a PR /pulse-build opened names no gates commit (audit M-2)
+        return (f"PR #{pr} has no passing review and audit of its last commit; nothing merged: pulse review "
+                f"{n} --run and pulse audit {n} --run, then pulse review {n} --publish")
+    try:
+        state.merge(root, repo, pr, head, run=state.gh)
+    except state.StateError as e:
+        return f"GitHub did not merge PR #{pr}: {e}"
+    return f"merged PR #{pr} into {base}"
 
 
 def _fetch(root: Path) -> None:
@@ -925,10 +1057,10 @@ def gather(root: Path) -> dict:
     sessions = [s for s in presence.read(root) if _job(root, s.get("home") or s["cwd"]) in (None, *phases)
                 or s["id"] in holders]      # no job, no agent, unless it holds an item (FIX-02)
     cwds = {a.get("cwd") for s in sessions for a in [s, *s["agents"]] if a.get("cwd")}
-    specs = {i["spec"] for i in items if not i["approved"] and i.get("spec")}   # on the base, or approve refuses
+    specs = {i["spec"] for i in items if not i["approved"] and i.get("spec")}   # on the base, or in its spec PR
     there = set(_git(str(root), "ls-tree", "-rz", "--name-only", config.base_ref(root), "--", *specs)
                 .split("\0")) if specs else set()
-    return {"repo": repo, "now": time.strftime("%H:%M:%S"),
+    return {"repo": repo, "now": time.strftime("%H:%M:%S"), "base": cfg["base_branch"] or config.default_branch(root),
             "person": _git(str(root), "config", "user.name") or me or "you", "me": me,
             "items": items, "sessions": sessions, "error": error, "phases": phases, "failed": failures(root, items),
             "closed": dict(Counter(closed(root, repo, items)) + finished),
@@ -1228,7 +1360,7 @@ def main(args) -> int:
                 status = ""
                 if action and action[0] == "say":
                     status, action = action[1], None
-                if action and level == "item" and action[0] in ("approve", "approve-plan", "unapprove"):
+                if action and level == "item" and action[0] in ("approve", "approve-plan", "unapprove", "merge"):
                     text, sure = brief(root, vm, action)     # what it binds; Enter confirms it
                     status, action = "\n".join(text), None
                     if sure:

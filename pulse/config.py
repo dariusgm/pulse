@@ -195,10 +195,13 @@ def agent_argv(template: str, prompt: str) -> list:
 
 
 def default_branch(root: Path) -> str:
-    """origin's default branch, or main when there is no remote to ask."""
-    out = subprocess.run(["git", "-C", str(root), "symbolic-ref", "--short",
-                          "refs/remotes/origin/HEAD"], capture_output=True, text=True, timeout=2)
-    return out.stdout.strip().split("/", 1)[-1] if out.returncode == 0 else "main"
+    """origin's default branch, or main when there is no remote to ask. The full name: a short one turns
+    ambiguous next to a tag named origin/main, and git answers remotes/origin/main (#69 final check)."""
+    out = subprocess.run(["git", "-C", str(root), "symbolic-ref", "refs/remotes/origin/HEAD"],
+                         capture_output=True, text=True, timeout=2)
+    name = out.stdout.strip()
+    return name.removeprefix("refs/remotes/origin/") if out.returncode == 0 and name.startswith(
+        "refs/remotes/origin/") else "main"
 
 
 def write(root: Path, **values) -> Path:

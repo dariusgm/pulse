@@ -93,9 +93,10 @@ Commits name their item: `Refs: #<n>`.
 
 Pulse stops for a person at these points and runs on everywhere else:
 the business analysis is approved; a person reads the spec and approves
-it (the person merges its pull request into the base branch, where
-agents plan from it, then runs `pulse approve`, which means build it:
-planning and the build follow in ramp order); a PLAN only when something
+it (`pulse approve`, or approve spec in the map, which means build it:
+planning and the build follow in ramp order; a spec still in its open
+spec pull request is merged into the base branch first, where agents
+plan from it); a PLAN only when something
 holds it (a risk flag or effort L in the spec, `needs:` in the PLAN, or
 `plan_approval = "manual"`; then `pulse approve-plan <n>`); the merge of
 each feature's pull request into the base branch. `pulse rank` steers

@@ -5,6 +5,53 @@ All notable changes to Pulse are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.5] - 2026-09-27
+
+### Added
+
+- The item view of the live map merges an item's finished pull request:
+  merge is offered once the pull request is ready and targets the base
+  branch, shows what it merges, and merges with Enter. The map reads the
+  pull request again first and merges only one of this repository at
+  the head the confirmation showed, without failing checks, whose gates
+  passed on that head and none blocked it. A pull request with commits
+  after the gates of pulse go is set back to draft, so the next pulse go
+  runs its gates again. The action read PR opens the pull request in the
+  browser, and NEXT sends a waiting merge to the item view instead of
+  GitHub (#70).
+
+### Changed
+
+- The git hook refuses commits on the base branch too, the one
+  `base_branch` in `.pulse/config.toml` names (without one, origin's
+  default branch), beside `main`, `master`, `develop`, `dev`, or the
+  list in `pulse.protected-branches`. A clone gets it with the next
+  `pulse setup --git-hook` (#75).
+- Approving a spec merges its spec pull request: `pulse approve <n>`
+  and approve spec in the live map merge the one open pull request that
+  carries the item's spec into the base branch, then approve the item.
+  Nobody merges a spec pull request on GitHub any more. Pulse reads the
+  pull request again first and merges only one of this repository
+  whose merge into the freshly fetched base branch changes nothing but
+  plain files under `_devprocess/`, and only the head whose spec passed
+  R1 to R6 and that the map showed; a draft becomes ready first, and the
+  item is approved once the spec is on the base branch. The confirmation
+  in the map names the pull request and the other specs it brings along,
+  which stay unapproved (#69).
+
+### Fixed
+
+- An open pull request that changes only files under `_devprocess/`,
+  such as a spec, no longer counts as the pull request of the item its
+  branch name names: the map shows no "waits for merge" for it, and
+  `pulse go` stacks nothing on it (#62).
+- The item view of the live map reads a spec that lies only on a branch
+  of origin, such as one in an open spec pull request: its goal shows,
+  and read spec opens a copy to read and names the branch. A spec in
+  the working tree that differs from the base branch opens as the base
+  branch has it. A spec path that leads out of the repository, or one
+  that is no Markdown file, opens nothing (#68).
+
 ## [0.1.4] - 2026-09-26
 
 ### Added

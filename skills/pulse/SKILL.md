@@ -35,7 +35,7 @@ Take the first row that applies. In Codex, name each command as
 | Project-BA is a Draft | `/pulse-ba` in Validation Mode |
 | A new epic or feature is wanted | `/pulse-ba` for its Item-BA |
 | A validated Project-BA or an Item-BA exists, no epics or features registered yet | `/pulse-re` |
-| Specs wait for approval (`pulse status`: "not approved") | show each spec's goal, scope, and success criteria; once the user merged its pull request into the base branch, `pulse approve <n>` on the user's yes, which means build it; it refuses a spec that is not on the base branch (R1) and, for a feature, improvement, or fix, one there that breaks R2 to R6: then `/pulse-re` on that spec (an epic needs R1 only) |
+| Specs wait for approval (`pulse status`: "not approved") | show each spec's goal, scope, and success criteria; `pulse approve <n>` on the user's yes, which means build it; a spec still in its one open spec pull request is merged into the base branch first. It refuses a spec in no such pull request (R1) and, for a feature, improvement, or fix, one that breaks R2 to R6: then `/pulse-re` on that spec (an epic needs R1 only) |
 | Items are approved but their spec does not pass R1 to R6 (`pulse check`) | `/pulse-re` on that spec |
 | A PLAN waits for a person (`pulse status`: "plan waits for you") | show its goal, decisions, and risks; `pulse approve-plan <n>` on a yes |
 | Approved items with a ready spec, or ready items, and free slots | `/pulse-go` (plans what has no PLAN, then builds all in parallel), or `/pulse-build <n>` for one in this session (it plans first when there is no PLAN) |

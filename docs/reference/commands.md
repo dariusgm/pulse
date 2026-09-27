@@ -39,7 +39,7 @@ Reads come from a local cache (`--fresh` skips it); `--json` gives machine-reada
 |---|---|
 | `pulse status` | where things stand: the map, once; --json gives its data<br>`--json`<br>`--fresh`: skip the cache |
 | `pulse show <n>` | one open item<br>`--json`<br>`--fresh` |
-| `pulse approve <n>...` | the team wants these items built<br>`--undo`: take the approval back |
+| `pulse approve <n>...` | the team wants these items built; a spec still in its open pull request is merged into the base branch first<br>`--undo`: take the approval back |
 | `pulse approve-plan <n>...` | a person approves these items' PLANs |
 | `pulse rank <n>` | put an item in the team order: before or after another, top or bottom<br>`--before <before>`<br>`--after <after>`<br>`--top`<br>`--bottom` |
 | `pulse go` | build every ready item in parallel: worktree + headless agent each<br>`--agent <agent>`: agents from [agents] with their slots, e.g. claude:2,codex:2 (default: config 'agent')<br>`--cap <cap>`: parallel slots for this run (default: config 'cap')<br>`--dry-run`: show what would start, change nothing<br>`--detach`: run apart from this terminal or chat, overnight: log and report in .git/pulse/go<br>`--json` |

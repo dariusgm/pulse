@@ -29,7 +29,7 @@ from pulse import config
 
 TTL = 30                 # a full reload at least this often: PR checks move without a new tag
 POLL = 2                 # seconds between the free conditional checks for a change
-FORMAT = 2               # of the issue cache, raised when normalize gains a field: another one is read again
+FORMAT = 5               # of the issue cache, raised when an item gains a field or load attaches differently
 # ponytail: comments ride along only for the claim marks (who holds an item, since when); a repo
 # with long issue threads pays for them in every full reload
 FIELDS = "number,title,state,labels,assignees,parent,blockedBy,blocking,body,url,updatedAt,comments"
@@ -286,14 +286,21 @@ def load(root: Path, repo_name: str, run=gh, fresh: bool = False) -> list:
                           "--limit", "1000", "--json", FIELDS]))
     items = [normalize(i) for i in raw]
     prs = json.loads(run(["pr", "list", "--repo", repo_name, "--state", "open", "--limit", "200",
-                          "--json", "number,headRefName,baseRefName,isDraft,closingIssuesReferences,"
-                                    "statusCheckRollup,reviewRequests"]))
+                          "--json", "number,headRefName,baseRefName,isDraft,closingIssuesReferences,"      # files:
+                                    "statusCheckRollup,reviewRequests,files,changedFiles,isCrossRepository,"
+                                    "headRefOid"]))   # #62; the head a merge from the map binds to (#70)
     closes = {n: {"number": pr["number"], "branch": pr["headRefName"], "base": pr.get("baseRefName"),
                   "draft": pr["isDraft"], "checks": checks(pr.get("statusCheckRollup") or []),
+                  "head": pr.get("headRefOid"),
                   "reviewers": [r["login"] for r in pr.get("reviewRequests") or [] if r.get("login")]}
               for pr in prs for n in pr_items(pr)}
+    carry = [{"number": pr["number"], "branch": pr["headRefName"], "base": pr.get("baseRefName"),
+              "draft": pr["isDraft"], "docs": docs_only(pr),
+              "files": [f.get("path", "") for f in pr.get("files") or []]}
+             for pr in prs if not pr.get("isCrossRepository")]         # a fork's PR blocks no approval (L-3)
     for i in items:
         i["pr"] = closes.get(i["number"])
+        i["spec_prs"] = [c for c in carry if i.get("spec") in c["files"]]      # approve merges it (#69)
     _keep(path, {"repo": repo_name, "format": FORMAT, "fetched_at": now, "checked_at": now, "etag": etag, "items": items})
     return items
 
@@ -304,12 +311,24 @@ def pr_items(pr: dict) -> set:
     name is all there is. A PR whose files are all under _devprocess/ (a spec, a plan) builds
     nothing by its name alone (FIX-02-06-04); files are known only where a call asks for them,
     and only a complete list counts: gh lists 100 at most, sorted by path."""
-    files = pr.get("files") or []
-    docs = files and len(files) == pr.get("changedFiles", len(files)) \
-        and all(f.get("path", "").startswith("_devprocess/") for f in files)
-    n = None if docs else item_of(pr.get("headRefName"))
+    n = None if docs_only(pr) else item_of(pr.get("headRefName"))
     return {ref["number"] for ref in pr.get("closingIssuesReferences") or [] if "number" in ref} | \
         ({n} if n else set())
+
+
+def docs_only(pr: dict) -> bool:
+    """Every file the PR changes is under _devprocess/, as far as gh says: a complete list only. gh
+    names a moved file by its new path; approve checks with git before it merges (#69)."""
+    files = pr.get("files") or []
+    return bool(files) and len(files) == pr.get("changedFiles", len(files)) \
+        and all(f.get("path", "").startswith("_devprocess/") for f in files)
+
+
+def merge(root: Path, repo_name: str, pr: int, head: str, run=gh) -> None:
+    """Merge PR #pr with a merge commit, only while head is its head: what was checked is what lands.
+    ponytail: always a merge commit; a choice of squash or rebase once a repository allows none."""
+    run(["pr", "merge", str(pr), "--repo", repo_name, "--merge", "--match-head-commit", head])
+    drop_cache(root)
 
 
 def sync_merged(root: Path, repo_name: str, items: list, run=gh) -> list:

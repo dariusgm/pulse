@@ -82,7 +82,7 @@ pulse new feat "Vote and rank" --parent 1 --spec _devprocess/requirements/featur
 pulse new feat "Action items" --parent 1 --blocked-by 3 --spec _devprocess/requirements/features/FEAT-01-03-action-items.md --issue 4
 ```
 
-Then it commits what `pulse new` wrote into the specs, pushes again, and opens a pull request with the specs into `develop`. Each feature is cut so that its merge reads well on its own: one feature, one traceable merge. Action items need the ranking first, so #4 waits for #3. The team agrees in the sync call that all three are specified well enough. Sebastian merges the pull request, because agents plan from the specs as the base branch has them, and `pulse approve 2 3 4` puts them on the ramp.
+Then it commits what `pulse new` wrote into the specs, pushes again, and opens a pull request with the specs into `develop`. Each feature is cut so that its merge reads well on its own: one feature, one traceable merge. Action items need the ranking first, so #4 waits for #3. The team agrees in the sync call that all three are specified well enough. Sebastian runs `pulse approve 2 3 4`, which merges the pull request into `develop` first, because agents plan from the specs as the base branch has them, and puts them on the ramp.
 
 ## Step 3: Plan
 

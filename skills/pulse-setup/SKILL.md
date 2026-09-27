@@ -72,8 +72,9 @@ pulse setup --labels
 ```
 
 Offer the local git hook: it refuses commits on `main`, `master`,
-`develop`, and `dev` (or those in `git config pulse.protected-branches`)
-and commits with `pulse check` findings; `git commit --no-verify`
+`develop`, and `dev` (or those in `git config pulse.protected-branches`),
+always also on the base branch (`base_branch`, without one origin's
+default branch), and commits with `pulse check` findings; `git commit --no-verify`
 bypasses it once. `pulse check` reads the board on GitHub; when it cannot
 (offline, no `gh` login) it reports `R1-R6 skipped: no board` and lets
 the commit through. The hook runs `pulse` from PATH, else the plugin

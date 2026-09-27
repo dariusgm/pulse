@@ -19,18 +19,23 @@ help, `q` quits. With color, each `#n` is a link to its issue in a
 terminal that knows links (VS Code, iTerm). The item view shows goal,
 stage, holder with phase and last sign of life, blockers, PR, and plan,
 then only what the item's stage allows, each with what it does, picked
-with `↑` `↓` and done with `Enter`: approve (or unapprove when it is
-approved and on the ramp), approve plan, read plan, prioritize (top of
+with `↑` `↓` and done with `Enter`: approve spec (or unapprove when it is
+approved and on the ramp), merge (a ready pull request into the base
+branch, after `Enter` confirms; not one with commits after its gates),
+approve plan, read PR (in the browser), read plan, prioritize (top of
 the ramp, one write), read spec. Both approvals and unapprove show
 what they do first and `Enter` confirms; reading opens a window while the map runs
 on (`PULSE_EDITOR`, else VS Code or Cursor, else the system's app, else
 the path). A write names itself in the footer while it runs; keys typed
 meanwhile are dropped. `Esc`, `q`,
 `←`, or Backspace go back one level and drop what is not written yet;
-only `q` on the map ends it. `a` refuses what `pulse approve` refuses,
-and approve names it in its line: a spec that is not on `origin/<base>`
-(R1) and, for a feature, improvement, or fix, one there that breaks R2
-to R6; an epic needs R1 only.
+only `q` on the map ends it. `a` does what `pulse approve` does: a spec
+still in its one open spec pull request is merged into the base branch
+first, and the confirmation names that pull request and the specs it
+brings along. `a` refuses what `pulse approve` refuses, and approve spec
+names it in its line: a spec in no such pull request (R1) and, for a
+feature, improvement, or fix, one that breaks R2 to R6; an epic needs R1
+only.
 `pulse map --demo` plays a time-lapse of a sample project without a
 repository.
 

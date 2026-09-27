@@ -480,18 +480,16 @@ def cmd_approve(args):
         print(f"approval taken back from {_refs(args.n)}")
         return 0
     items = {i["number"]: i for i in state.load(root, repo, run=run)}
-    branch = config.load(root)["base_branch"] or config.default_branch(root)
-    ready.net_git(root, "fetch", "-q", "origin", branch)
-    base = config.base_ref(root, branch)
-    refused = {}
-    for n in args.n:           # agents plan from the base branch, so the spec is merged first (R1, D-19);
-        i = items.get(n) or {}  # there pulse check holds a work item's spec to R2 to R6 too, in every commit
-        why = spec.refusal(spec.on_base(root, i["spec"], base) if i.get("spec") else None, i.get("type"), n, base)
-        if why:
-            refused[n] = why
-    good = [n for n in args.n if n not in refused]
+    good, refused = [], {}
+    for n in args.n:           # agents plan from the base branch, so a spec only in its PR is merged first (R1, #69)
+        ok, said = ready.approve(root, repo, items.get(n) or {"number": n}, run=run)
+        if ok:
+            good.append(n)
+            if said:
+                print(f"#{n}: {said}")
+        else:
+            refused[n] = said
     if good:
-        state.approve(root, repo, good, run=run)
         print(f"approved {_refs(good)}: the team wants {'it' if len(good) == 1 else 'them'} built")
     for n, why in refused.items():
         print(f"#{n} not approved: {why}")
@@ -610,7 +608,8 @@ def parser() -> argparse.ArgumentParser:
     c.add_argument("n", type=int)
     c.add_argument("--json", action="store_true")
     c.add_argument("--fresh", action="store_true")
-    c = add("approve", cmd_approve, "the team wants these items built")
+    c = add("approve", cmd_approve, "the team wants these items built; a spec still in its open pull request "
+                                     "is merged into the base branch first")
     c.add_argument("n", type=int, nargs="+")
     c.add_argument("--undo", action="store_true", help="take the approval back")
     c = add("approve-plan", cmd_approve_plan, "a person approves these items' PLANs")

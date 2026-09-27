@@ -13,6 +13,7 @@ of every clone. The rules read text only; plans() and gates() read git.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import signal
@@ -295,6 +296,123 @@ def plan_gate(plan_text: str, spec_text, cfg: dict, plan_ok: str = None, blocker
     if cfg.get("plan_approval") == "manual" or why:
         return "plan waits for you" + (f" ({why})" if why else "")
     return None
+
+
+def spec_pr(item: dict, branch: str) -> tuple:
+    """(the one open PR into branch that carries the item's spec and changes only _devprocess/, "")
+    or (None, why not): what approving the item merges when its spec is not on branch yet (#69)."""
+    prs = [p for p in item.get("spec_prs") or () if p["base"] == branch]
+    if not prs:
+        return None, f"no open pull request into {branch} carries it; /pulse-re pushes it and opens one"
+    if len(prs) > 1:
+        return None, f"open pull requests {', '.join('#%d' % p['number'] for p in prs)} carry it: close all but one"
+    if not prs[0]["docs"]:
+        return None, (f"PR #{prs[0]['number']} that carries it changes more than _devprocess/, or more files than "
+                      "gh lists: approve merges only a spec pull request")
+    return prs[0], ""
+
+
+def printable(text: str) -> str:
+    """Text from a branch or a PR, fit for a terminal: control characters become "?" (audit L-1 of #69)."""
+    return "".join(c if c.isprintable() else "?" for c in text)
+
+
+def _shown(paths: list) -> str:
+    """Paths a PR chose, fit for a terminal, three at most."""
+    return ", ".join(map(printable, paths[:3])) + (f" and {len(paths) - 3} more" if len(paths) > 3 else "")
+
+
+def _fetch_base(root: Path, branch: str) -> bool:
+    """origin's branch into refs/remotes/origin/<branch> whatever the clone's refspec says (a clone of
+    one other branch fetched into FETCH_HEAD alone); True when origin answered."""
+    return not net_git(root, "fetch", "-q", "origin", f"+refs/heads/{branch}:refs/remotes/origin/{branch}").returncode
+
+
+def _tip(root: Path, ref: str) -> str:
+    """The commit of exactly this full ref, or "": git's own lookup would fall through to a tag named like
+    it, refs/tags/refs/remotes/origin/main say, that anyone with push access can place (#69 final check)."""
+    return _git(root, "show-ref", "--verify", "-s", ref).strip()
+
+
+def approve(root: Path, repo_name: str, item: dict, run=None, head: str = None) -> tuple:
+    """(approved, what happened or why not) for pulse approve and the map's approve spec. A spec on
+    the base branch is held to R1 to R6 there. A spec only in its one open spec PR (#69) is read
+    afresh: no fork, into the base, the head the map showed when it showed one, the merge into the
+    freshly fetched base changing only plain files under _devprocess/ (renames split, so moved code
+    shows; no link or submodule), the spec at that head to R1 to R6. Then a draft becomes ready, the
+    PR is merged bound to that head, and once the spec is on the base branch the item approved."""
+    ok, said = _approve(root, repo_name, item, run or state.gh, head)
+    return ok, printable(said)
+
+
+def _approve(root: Path, repo_name: str, item: dict, run, shown: str) -> tuple:
+    n, path = item.get("number"), item.get("spec")
+    branch = config.load(root)["base_branch"] or config.default_branch(root)
+    _fetch_base(root, branch)
+    base = config.base_ref(root, branch)
+    real = _tip(root, f"refs/remotes/origin/{branch}") or _tip(root, f"refs/heads/{branch}")
+    text = spec.on_base(root, path, real) if path and real else None
+    if text is not None:
+        why = spec.refusal(text, item.get("type"), n, base)
+        if not why:
+            state.approve(root, repo_name, [n], run=run)
+        return not why, why
+    pr, why = spec_pr(item, branch)
+    if not pr:
+        return False, f"R1 spec missing on the base branch ({base}); {why}"
+    p = pr["number"]
+    try:
+        v = json.loads(run(["pr", "view", str(p), "--repo", repo_name, "--json",
+                            "state,isDraft,isCrossRepository,baseRefName,headRefName,headRefOid"]))
+    except (state.StateError, ValueError) as e:
+        return False, f"PR #{p} could not be read: {e}"
+    if v.get("isCrossRepository"):
+        return False, f"PR #{p} comes from a fork: approve merges only a spec pull request of this repository"
+    head = v.get("headRefOid") or ""
+    if v.get("state") != "OPEN" or v.get("baseRefName") != branch or not re.fullmatch(r"[0-9a-f]{40,64}", head):
+        return False, f"PR #{p} is not an open pull request into {branch}"
+    if shown and head != shown:               # the map's confirmation showed another head (audit M-1)
+        return False, f"PR #{p} moved since approve spec showed it; nothing merged"
+    net_git(root, "fetch", "-q", "origin", f"refs/heads/{v.get('headRefName')}")     # never read as an option
+    if not _git(root, "rev-parse", "--verify", "-q", f"{head}^{{commit}}").strip():
+        return False, f"PR #{p} moved while Pulse read it; approve the item again"
+    real = _tip(root, f"refs/remotes/origin/{branch}") if _fetch_base(root, branch) else ""
+    if not real:                              # a stale base hides what merges (audit round 2, M-2)
+        return False, f"Pulse could not fetch {branch} from origin; nothing merged"
+    merged = subprocess.run(["git", "-C", str(root), "merge-tree", "--write-tree", real, head],
+                            capture_output=True, text=True)
+    tree = merged.stdout.split("\n", 1)[0].strip()
+    if merged.returncode or not re.fullmatch(r"[0-9a-f]{40,64}", tree):
+        return False, (f"PR #{p} does not merge cleanly into {branch} here (or git is older than 2.38); "
+                       "nothing merged")
+    # judge what the merge writes, as GitHub's merge-ort makes it: a criss-cross history, a file the base
+    # moved out of _devprocess/ (audit H-1, round 2 M-1), renames split, submodules shown whatever the config
+    raw = _git(root, "diff", "--raw", "-z", "--no-renames", "--no-abbrev", "--ignore-submodules=none",
+               real, tree).split("\0")
+    changed = list(zip(raw[1::2], raw[0::2]))     # (path, ":old new sha sha status")
+    outside = [c for c, _ in changed if not c.startswith("_devprocess/")]
+    odd = [c for c, m in changed if {m[1:7], m[8:14]} & {"120000", "160000"}]     # a link, a submodule (M-2)
+    if outside or odd or path not in dict(changed):
+        return False, (f"PR #{p} changes {_shown(outside)} outside _devprocess/: approve merges only a spec pull "
+                       "request" if outside else f"PR #{p} adds a link or a submodule under _devprocess/: "
+                       f"{_shown(odd)}; approve merges only files" if odd else f"PR #{p} does not carry the spec")
+    why = spec.refusal(spec.on_base(root, path, head), item.get("type"), n, f"PR #{p}",
+                       fix="fix its spec with /pulse-re on its branch; nothing merged")
+    if why:
+        return False, why
+    try:
+        if v.get("isDraft"):
+            run(["pr", "ready", str(p), "--repo", repo_name])
+        state.merge(root, repo_name, p, head, run=run)
+    except state.StateError as e:
+        return False, f"GitHub did not merge PR #{p}: {e}"
+    _fetch_base(root, branch)                # a merge queue takes the PR, and gh exits 0 all the same
+    if spec.on_base(root, path, _tip(root, f"refs/remotes/origin/{branch}") or real) is None:
+        return False, (f"GitHub took PR #{p}, but the spec is not on {branch} yet (a merge queue?); approve "
+                       "the item again once it merged")
+    state.approve(root, repo_name, [n], run=run)
+    others = [c for c, _ in changed if c != path]
+    return True, f"merged its spec PR #{p} into {branch}" + (f", with {_shown(others)}" if others else "")
 
 
 def approvable(root: Path, items: list, cfg: dict, n: int) -> tuple:

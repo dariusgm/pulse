@@ -367,10 +367,11 @@ pull request into the base branch.
 
 Its merge belongs to the approval, because agents plan from the
 spec as the base branch has it (rule R1): when the team wants an item
-built, a person merges it, then `pulse approve <n>` records the decision
-(on their yes, or the approve action in the ramp); `pulse approve`
-refuses while the spec is not on the base branch, and for a work item
-while that spec breaks R2 to R6. Items still under discussion stay
+built, `pulse approve <n>` records the decision (on their yes, or
+approve spec in the map) and merges this pull request into the base
+branch first; nobody merges it on GitHub. It merges only a pull request
+that changes nothing outside `_devprocess/`, and refuses while the spec
+breaks R2 to R6 for a work item. Items still under discussion stay
 unapproved.
 
 ## Activation Path format

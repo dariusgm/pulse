@@ -22,10 +22,10 @@ nothing is done until the evidence says so.
 2. Claim it unless an orchestrator already did: `pulse claim <n>`. The
    claim belongs to this session. Exit code 1 prints why:
    - is closed: pick the next item from `pulse status`.
-   - is not approved: ask the user whether to build it. Its spec must be
-     merged into the base branch first (the user merges its pull
-     request); on the user's yes, after that merge, run
-     `pulse approve <n>` and claim again. Never approve on your own.
+   - is not approved: ask the user whether to build it. On the user's
+     yes, run `pulse approve <n>` and claim again: a spec still in its
+     open spec pull request is merged into the base branch first. Never
+     approve on your own.
    - is blocked by an open item: that item comes first.
    - names a file another item holds (`<file> is in use by #m`): #m
      comes first; pick the next item.
@@ -113,8 +113,9 @@ with the symptom and what is known about the cause, and `parent:` set;
 branch from the base branch and push it, then register it:
 `pulse new fix "<symptom>" --parent <feature> --spec <path>`. Commit what
 it wrote, push again, and open a pull request into the base branch. Ask
-whether to fix it now; on the user's yes the user merges that pull
-request, then run `pulse approve <n>` and build it here.
+whether to fix it now; on the user's yes run `pulse approve <n>`,
+which merges that pull request into the base branch first, and build it
+here.
 
 **Fixing one:** a test that reproduces the bug comes first. Then the
 regression cycle: the test passes with the fix, fails with the fix

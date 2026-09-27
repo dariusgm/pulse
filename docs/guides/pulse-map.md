@@ -87,8 +87,8 @@ WHO IS DOING WHAT ────────────────────�
 
 NEXT ───────────────────────────────────────────────────────────────────────────
  your review                                            review PR #112 on GitHub
- waits for merge                                         merge PR #114 on GitHub
- not approved                           pulse approve 15, or approve in its view
+ waits for merge                                       merge PR #114 in its view
+ not approved                      pulse approve 15, or approve spec in its view
  starts next                                                 /pulse-go builds it
 
 RAMP all open work, in team order ──────────────────────────────────────────────
@@ -126,7 +126,7 @@ A working light breathes: its brightness rises and falls in a cycle of about thr
 
 ### Who is doing what
 
-You come first, with the features you hold and the drafts whose spec you write. Each feature line says where it stands: while `pulse go` runs it, the step of its chain (`planning`, `building`, `RED check running`, `tests running`, `review running`, `audit running`, `fix round`); once its pull request exists, `draft PR #n, a gate is red` or `PR #n, waits for merge`; `on #n` when it is stacked on the branch of feature #n. Below a feature with a running agent stands what the agent does, in plain words: an agent that needs you or failed comes first, otherwise the latest activity. Where several chats stand on one feature and some of them ask you, the line counts them and names what a working agent there does: `2 chats ask you, Codex: running npm run test:e2e`. Which chats they are, [Next](#next) says. An agent counts for the item its session holds, wherever its directory stands; without a claim, for the item its branch builds, and a Codex agent stands on the branch where its last command ran. An agent outside any feature, such as the session that runs `pulse go` on `develop`, gets a line with its branch. A merged feature leaves the map at once, also when it merged into a branch other than the default one: GitHub closes nothing there, and `pulse status` closes the item later. Until it does, an item it blocks still waits for it; the next `pulse go` closes it before it starts anything. A merged pull request that changes only files under `_devprocess/`, such as the spec, counts for no feature by its branch name, so the feature stays.
+You come first, with the features you hold and the drafts whose spec you write. Each feature line says where it stands: while `pulse go` runs it, the step of its chain (`planning`, `building`, `RED check running`, `tests running`, `review running`, `audit running`, `fix round`); once its pull request exists, `draft PR #n, a gate is red` or `PR #n, waits for merge`; `on #n` when it is stacked on the branch of feature #n. Below a feature with a running agent stands what the agent does, in plain words: an agent that needs you or failed comes first, otherwise the latest activity. Where several chats stand on one feature and some of them ask you, the line counts them and names what a working agent there does: `2 chats ask you, Codex: running npm run test:e2e`. Which chats they are, [Next](#next) says. An agent counts for the item its session holds, wherever its directory stands; without a claim, for the item its branch builds, and a Codex agent stands on the branch where its last command ran. An agent outside any feature, such as the session that runs `pulse go` on `develop`, gets a line with its branch. A merged feature leaves the map at once, also when it merged into a branch other than the default one: GitHub closes nothing there, and `pulse status` closes the item later. Until it does, an item it blocks still waits for it; the next `pulse go` closes it before it starts anything. A pull request that changes only files under `_devprocess/`, such as the spec, counts for no feature by its branch name, open or merged: the feature shows no "waits for merge" for it, and it stays on the map after that merge.
 
 Teammates follow, each with the items they hold and where each pull request stands. Until the pull request exists, the line tells how their work goes, from the sign of life their session or `pulse go` writes into the claim:
 
@@ -148,10 +148,10 @@ One line per kind of thing that waits, the most urgent first, each with the step
 | `failing` | `/pulse-build <n>` takes it on in a session |
 | `asks you` | answer that chat: one line per chat that waits for you, the longest waiting first, with its agent, title, and how long it waits (`answer Claude "Epic 17 layout" (35 min)`), or where it stands when it has no title (`answer Codex on #12`). A long title is cut inside its quotes, so the wait time always shows. A chat counts once, also when a subagent of it asks. `Enter` on the line opens the chat in VS Code, and so does a click with color; a chat that runs in a terminal gets no link and says `in its terminal`, a thread of the Codex app says `in the Codex app`, a chat in Cursor or VS Code Insiders names its editor |
 | `your review` | review the pull request on GitHub |
-| `waits for merge` | merge the pull request on GitHub |
+| `waits for merge` | merge the pull request in the item's view; a stacked one waits for the pull request it stacks on |
 | `plan waits for you` | `pulse approve-plan <n>`, or approve plan in its view |
-| `not approved` | `pulse approve <n>`, or approve in its view; while its spec is not on the base branch, merge the spec first |
-| `spec rule` | `/pulse-re` on the item's spec; `pulse approve <n>`, or approve in its view, names the rule it breaks, and for an approved item the ramp row names it too |
+| `not approved` | `pulse approve <n>`, or approve spec in its view, which merges its spec pull request first while the spec is not on the base branch; `/pulse-re opens a pull request for the spec of #n` when no pull request carries it |
+| `spec rule` | `/pulse-re` on the item's spec; `pulse approve <n>`, or approve spec in its view, names the rule it breaks, and for an approved item the ramp row names it too |
 | `last run` | `/pulse-build <n>` goes on from where the last run stopped |
 | `needs a plan` | `/pulse-go` writes its plan |
 | `starts next` | `/pulse-go` builds it |
@@ -171,9 +171,9 @@ Two more states come from the board:
 
 ## Keys
 
-The map is a tree: the map itself, an item, and what acts on that item. No key needs Shift, and the last line always lists the keys of the level you are on. Only the order and approvals are written from the map: the order, the approval to build an item and taking it back, and the approval of a plan. Claiming, closing, and new items stay with the commands.
+The map is a tree: the map itself, an item, and what acts on that item. No key needs Shift, and the last line always lists the keys of the level you are on. Only the order, approvals, and merges are written from the map: the order, the approval to build an item and taking it back, the approval of a plan, and the merge of an item's finished pull request. Claiming, closing, and new items stay with the commands.
 
-The map reads the board beside its keys, so a key never waits for GitHub. A write names itself in the footer while it runs (`moving #8…`, `approving #6…`), and the next frame shows the board as the write left it; keys typed while it runs are dropped, so none of them acts on the new board.
+The map reads the board beside its keys, so a key never waits for GitHub. A write names itself in the footer while it runs (`moving #8…`, `approving #6…`, `merging the PR of #14…`), and the next frame shows the board as the write left it; keys typed while it runs are dropped, so none of them acts on the new board.
 
 In a terminal lower than the map, the header stays on top and the last line keeps the keys; between them the map shows the part around the picked row and says how many lines it hides. The help stands under the header too. A terminal too low for header, one row, and keys gives header lines up first, so the map never scrolls.
 
@@ -206,7 +206,7 @@ In a terminal lower than the map, the header stays on top and the last line keep
  PR          none
  plan        none yet
 
- › approve       agents plan and build it when its turn comes
+ › approve spec  agents plan and build it when its turn comes
    prioritize    top of the ramp: it gets the next free slot
    read spec     open it in your editor
 ```
@@ -217,16 +217,22 @@ Below the facts stands what you can do with the item now, each with what it does
 
 | Offered | When | Does |
 |---|---|---|
-| `approve` | it is not approved | agents plan and build it when its turn comes. When it cannot be approved yet, the line says why in its place: its spec is still on a branch, breaks a rule, or is still being written |
+| `approve spec` | it is not approved | agents plan and build it when its turn comes. While its spec lies only in one open spec pull request, the line says that it merges that pull request into the base branch first. When it cannot be approved yet, the line says why in its place: no open pull request carries its spec, several do, that pull request changes more than `_devprocess/`, or the spec breaks a rule or is still being written |
 | `unapprove` | it is approved and on the ramp | takes the approval back after `Enter` confirms: nobody builds it until someone approves it again |
 | `approve plan` | its plan waits for a person | the agent builds it as this plan says |
 | `read plan` | it has a plan | opens the plan in a window; one that lies only on its item branch opens as a copy to read |
 | `prioritize` | it is on the ramp, below the top | puts it at the top of the ramp, with one write: it gets the next free slot |
-| `read spec` | it has a spec | opens the spec in a window |
+| `read spec` | it has a spec | opens the spec in a window, as the base branch has it: agents plan from that one. A spec that is not there yet, such as one in an open spec pull request, opens as a copy to read from the newest branch on origin that has it, and the status line names that branch. A spec only in your working tree opens there; a spec path that leads out of the repository, or one that is no Markdown file, opens nothing |
+| `merge` | its pull request is ready (no draft, no failing check) and targets the base branch | merges it into the base branch after `Enter` confirms; `pulse go` makes a pull request ready only when tests, review, and audit passed |
+| `read PR` | it has a pull request | opens it in your browser: its diff, the gates, and what departs from the plan |
 
 ### Approvals
 
-`approve`, `approve plan`, and `unapprove` never write on the first press. They show what the approval binds, and `Enter` confirms; any other key cancels. `approve` refuses what `pulse approve` refuses, and says why: a spec that is not on `origin/<base>` (rule R1), because agents plan from the base branch, and for a feature, improvement, or fix a spec there that breaks one of R2 to R6, which `pulse check` would hold against every commit; an epic needs R1 only. The map sees origin as of its last fetch, which runs beside it at most every 30 seconds. `approve plan` is offered on any item whose plan waits for a person, also on one you hold: `/pulse-build` keeps its claim while the plan waits. If the plan changed between showing and `Enter`, the map says so and approves nothing. On an item that is approved already, `a` says so and writes nothing.
+`approve spec`, `approve plan`, and `unapprove` never write on the first press. They show what the approval binds, and `Enter` confirms; any other key cancels. `approve spec` does what `pulse approve` does. Agents plan from the base branch, so a spec that lies only in its open spec pull request is merged there first: the confirmation names that pull request, says when it is a draft that becomes ready, and lists the other specs it brings along, which stay unapproved. Before the merge Pulse reads the pull request again: it merges only one of this repository into the base branch, freshly fetched, whose merge there changes nothing but plain files under `_devprocess/`: Pulse builds that merge itself, as GitHub will, so a moved file or a history that merges back and forth counts with every path the merge writes, and a link or a submodule counts as no plain file. It checks the spec as that head has it and merges exactly the head the confirmation showed. When GitHub only queues the merge, nothing is approved until the spec is on the base branch. It refuses, and says why, a spec in no open pull request or in several (rule R1), and for a feature, improvement, or fix a spec that breaks one of R2 to R6, which `pulse check` would hold against every commit; an epic needs R1 only. When GitHub refuses the merge, the status line shows its message and nothing is approved. The map sees origin as of its last fetch, which runs beside it at most every 30 seconds. `approve plan` is offered on any item whose plan waits for a person, also on one you hold: `/pulse-build` keeps its claim while the plan waits. If the plan changed between showing and `Enter`, the map says so and approves nothing. On an item that is approved already, `a` says so and writes nothing.
+
+### Merging
+
+`merge` never writes on the first press either: it shows the pull request, the item's goal, and the base branch, and `Enter` merges. Before the merge the map reads the pull request again. It merges only one of this repository, never a fork's, that is still open, ready, aimed at the base branch, and without failing checks, and only the head the confirmation showed. Its gates must have passed on that head. A review or audit of the head published on the pull request (`pulse review <n> --publish`) by someone who may push counts first: a blocking one merges nothing, and a passing review and audit merge it. Without them, the commit `pulse go` names in the pull request (`Gates ran at <commit>`) must be the head, and every row of its gate table must say pass. When the branch got commits after the gates of `pulse go` and no passing verdicts cover them, the map merges nothing and sets the pull request back to draft, so the next `pulse go` of its holder takes it up and runs the gates on the new commits. The merge makes a merge commit; when GitHub refuses (a review the branch requires, a conflict, a repository without merge commits), the status line shows its message and the pull request stays open. A merged item leaves the map at once. A pull request stacked on a blocker's branch gets no `merge`: it moves to the base branch after its blocker's merge, at the next `pulse status` or `pulse go`.
 
 ### Moving
 
@@ -242,7 +248,7 @@ Read spec and read plan never take the terminal. They open the file with the fir
 2. in the terminal of VS Code or Cursor (`TERM_PROGRAM` is `vscode`): that editor's window, through `code -r` or `cursor -r`.
 3. the system's app for the file: `open` on macOS, `xdg-open` on Linux.
 
-Without any of them, the map shows the path to open yourself.
+Without any of them, the map shows the path to open yourself. The goal line of the item view reads the spec the same way, so a spec on a branch shows its goal before it is merged.
 
 ### Opening a chat
 

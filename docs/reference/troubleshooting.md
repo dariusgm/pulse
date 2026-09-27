@@ -67,13 +67,13 @@ pulse new: _devprocess/requirements/features/FEAT-01-02-login.md is not on origi
 
 Commit the spec, run the push the message names, and run the same `pulse new` again. A spec you changed after the push needs another commit and push. `write the spec first, <path> does not exist in the repository` means the path is wrong or the spec is not written yet. For work whose spec does not exist yet, register a draft instead: `pulse new <type> "<title>" --draft`.
 
-### `pulse approve` refuses: merge the spec first
+### `pulse approve` refuses: no pull request carries the spec
 
 ```text
-#12 not approved: R1 spec missing on the base branch (origin/main); merge its spec there first
+#12 not approved: R1 spec missing on the base branch (origin/main); no open pull request into main carries it; /pulse-re pushes it and opens one
 ```
 
-Agents plan from the spec as the base branch on origin has it, so an approval waits for that merge (rule R1). Merge the pull request that carries the spec, the one `/pulse-re` opened, then run `pulse approve <n>` again. The `a` key on the map refuses in the same way. `R1 issue: ... in the spec, item is #12` means the spec on the base branch names another item or none: commit the `issue:` line that `pulse new` wrote into the spec, push, and merge it as well. A draft has no spec yet and cannot be approved.
+Agents plan from the spec as the base branch on origin has it (rule R1). `pulse approve` merges the one open pull request that carries the spec into the base branch first, the one `/pulse-re` opened; here there is none. Push the spec and open that pull request, or let `/pulse-re` do it, then approve again. With several open pull requests that carry the spec, close all but one. A pull request whose merge would change files outside `_devprocess/` or add a link or a submodule there, one that does not merge cleanly, or one from a fork is never merged by an approval: merge that one yourself. Without a fresh fetch of the base branch nothing is merged either. When the pull request moved after the map showed it, approve spec refuses and names it; press `a` again to see the new head. `R1 issue: ... in the spec, item is #12` means the spec names another item or none: commit the `issue:` line that `pulse new` wrote into the spec and push. When GitHub refuses the merge (a conflict, a review the branch requires), `pulse approve` shows its message and approves nothing. The approve spec action on the map behaves the same. A draft has no spec yet and cannot be approved.
 
 `pulse approve` also refuses while the spec of a feature, improvement, or fix on the base branch breaks one of R2 to R6 (an epic needs R1 only), and names the rule; the `a` key on the map does the same. Fix the spec with [`/pulse-re`](../guides/pulse-re), merge it, and approve again.
 

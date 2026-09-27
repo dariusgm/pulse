@@ -43,6 +43,7 @@ TITLE_ID = re.compile(r"^(?:EPIC|FEAT|IMP|FIX)(?:-\d+)+\s+")
 ENTRY = re.compile(r"^( *- \[)(#\d+ )?(?:(?:EPIC|FEAT|IMP|FIX)(?:-\d+)+ )?([^\]\n]*\]\(([^)\s]+)\))", re.M)
 TERMS = Path(__file__).resolve().parents[1] / "skills" / "pulse-re" / "references" / "tech-agnostic-rules.md"
 REQUIREMENTS = "_devprocess/requirements"
+BLOB = re.compile(r"^[0-9a-f]{40,64} blob \d+$")
 
 
 def on_base(root: Path, path: str, ref: str = None):
@@ -50,6 +51,34 @@ def on_base(root: Path, path: str, ref: str = None):
     out = subprocess.run(["git", "-C", str(root), "show", f"{ref or config.base_ref(root)}:{path}"],
                          capture_output=True, text=True, encoding="utf-8", errors="replace")
     return out.stdout if out.returncode == 0 else None
+
+
+_found: dict = {}          # the item view asks every 2 s (#68): git again only once a branch moved
+
+
+def find(root: Path, path: str) -> tuple:
+    """(text, ref) of a spec as the base branch has it, else as the branch of origin with the newest tip
+    that has it (#68), else (None, None). One batch asks every branch, blobs only, and the answer holds
+    until a branch moves. The newest tip may hold an older version than another branch."""
+    base = config.base_ref(root)
+    tips = _git_out(root, "for-each-ref", "--sort=-committerdate", "--format=%(objectname) %(refname)",
+                    "refs/remotes/origin", "refs/heads")
+    key = (str(root), path, base, tips)
+    if key not in _found:
+        text, ref = on_base(root, path, base), base
+        if text is None:
+            refs = [r[len("refs/remotes/"):] for r in (line.partition(" ")[2] for line in tips.split("\n"))
+                    if r.startswith("refs/remotes/origin/") and r != "refs/remotes/origin/HEAD"]
+            # one question a line; text mode ends a line at \r too, so a path with either asks nothing
+            have = [] if "\n" in path or "\r" in path else subprocess.run(
+                ["git", "-C", str(root), "cat-file", "--batch-check"], capture_output=True, text=True,
+                encoding="utf-8", errors="replace", input="".join(f"{r}:{path}\n" for r in refs)).stdout.split("\n")
+            ref = next((r for r, line in zip(refs, have) if BLOB.match(line)), None)
+            text = on_base(root, path, ref) if ref else None
+        if len(_found) > 64:
+            _found.clear()
+        _found[key] = (text, ref if text is not None else None)
+    return _found[key]
 
 
 def split(text: str) -> tuple:
@@ -97,15 +126,14 @@ def _terms() -> list:
             for t in l.split(",") if t.strip()]
 
 
-def refusal(text, kind: str, number, base: str) -> str:
+def refusal(text, kind: str, number, base: str, fix: str = "") -> str:
     """Why pulse approve and the map's key a refuse #number, or "": its spec is not on the base
     branch (R1, D-43), or for a work item it breaks R2 to R6 there, which pulse check would hold
-    against every commit. An epic needs R1 only."""
+    against every commit. An epic needs R1 only. base names where the text comes from, fix what to do."""
     wrong = [f for f in findings(text, kind, number) if f.startswith("R1 ") or kind in SECTIONS]
     if not wrong:
         return ""
-    return f"{'; '.join(wrong)} ({base}); " + ("merge its spec there first" if text is None
-                                               else "fix its spec with /pulse-re and merge it there first")
+    return f"{'; '.join(wrong)} ({base}); " + (fix or "fix its spec with /pulse-re and merge it there first")
 
 
 def findings(text, kind: str, number=None) -> list:
