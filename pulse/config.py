@@ -32,8 +32,14 @@ PARALLEL = ("off", "items", "max")
 # and {gitdir} opens the shared git dir, which Codex's sandbox keeps read-only, so a worktree can
 # commit. load() fills both, in any template.
 # Both print JSON, so pulse go can read what each phase used (.git/pulse/usage.jsonl).
+# opencode needs neither placeholder: it commits its own edits in the worktree, unsandboxed.
+# --auto approves what a headless run cannot ask about; --format json is its own schema, not
+# Claude's or Codex's, so _usage() finds nothing in it and usage.jsonl carries no tokens or cost
+# for it, only the model from --model and the phase's seconds. ollama/... picks a local model
+# through Ollama; a model of your own replaces mistral:7b-instruct in .pulse/config.toml.
 AGENTS = {"claude": "claude -p --allowedTools {allow} --output-format json --permission-mode acceptEdits {prompt}",
-          "codex": "codex exec --json --sandbox workspace-write --add-dir {gitdir} {prompt}"}
+          "codex": "codex exec --json --sandbox workspace-write --add-dir {gitdir} {prompt}",
+          "opencode": "opencode run --auto --format json --model ollama/mistral:7b-instruct {prompt}"}
 # Where a VS Code extension keeps the agent it bundles, for people who have only the extension.
 BUNDLED = {"claude": "anthropic.claude-code-*/resources/native-binary/claude",
            "codex": "openai.chatgpt-*/bin/*/codex"}

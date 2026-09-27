@@ -112,6 +112,7 @@ agent_timeout = 60        # minutes; a hung agent is stopped with its child proc
 [agents]
 claude = "claude -p --allowedTools {allow} --output-format json --permission-mode acceptEdits {prompt}"
 codex = "codex exec --json --sandbox workspace-write --add-dir {gitdir} {prompt}"
+opencode = "opencode run --auto --format json --model ollama/mistral:7b-instruct {prompt}"
 ```
 
 A headless agent cannot answer a permission prompt, so it runs only what its template allows. `{allow}` lets Claude Code run `verify`, the `verify:` commands of the item's PLAN, and five git commands; `{gitdir}` lets Codex commit from its worktree. [Agent templates](../reference/configuration#agent-templates) says what each covers and how to fix a template copied from an older Pulse. A `verify:` command of the PLAN is allowed only when it starts with a program of `verify` or with a script of the repository, such as `bin/pulse check`; a shell or interpreter given code, a download, `npx`, `env`, or `sudo` never is, and the item log and the pull request name each command left out. An agent missing on `PATH` runs from the newest VS Code extension that bundles it. The review and audit sessions start from `review_agent`, else from the agent that built the item. Pulse never bypasses an approval.
@@ -125,6 +126,10 @@ agent = "claude:2,codex:2"    # or: pulse go --agent claude:2,codex:2
 ```
 
 Each agent gets its own slots; a bare name gets `cap` slots, and `cap` stays the ceiling for the run. Each item goes to the agent with the most free slots. When an agent hits its usage limit, it gets no new item for the rest of the run, and the item it was building goes to another agent, which continues in the same worktree.
+
+### A local model alongside a subscription
+
+`agent = "claude:2,opencode:2"` sends half the ramp to a local model, free and private, and keeps `claude` on the rest. The built-in `opencode` template runs [OpenCode](https://opencode.ai) against `ollama serve` on `localhost:11434`; see [Agent templates](../reference/configuration#agent-templates) for the model, what `--auto` does and does not cover, and why its usage line carries no tokens or cost. A weaker local model fails gates more often than `claude` or `codex` would on the same item; that item still gets its usual fix rounds, and a build that never turns green stays a draft with the gate that is red, same as any other agent's.
 
 ## Without headless agents
 
