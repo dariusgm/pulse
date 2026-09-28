@@ -51,7 +51,8 @@ here. Start a fresh one: a subagent that gets the brief from
 `pulse go` do this on their own.
 
 1. `pulse review <n>` prints the brief: spec, PLAN, base, and what the
-   script already found (files outside the PLAN).
+   script already found (files outside the PLAN, changed agent
+   instructions). `--record` counts a report only after this brief.
 2. Read the spec, the PLAN with its change log, the decision records
    whose "Read When" matches (`_devprocess/decisions/README.md`), and the
    nearest path-local AGENTS.md of each changed area.
@@ -60,8 +61,9 @@ here. Start a fresh one: a subagent that gets the brief from
    not tell you what it does.
 4. Go through the checks below. Every finding names a place, the check,
    and what is wrong. No finding without a place.
-5. Write `REVIEW.md` at the worktree root. Do not change code, do not
-   commit, do not touch GitHub.
+5. Write `REVIEW.md` where the brief says: at the worktree root, or in
+   `pulse go` at the path it names beside the checkout. Do not change
+   code, do not commit, do not touch GitHub.
 
 **Temporary checks.** A script, probe, or fixture you write to confirm
 a finding goes under `_devprocess/temp/testing/`, never into the
@@ -119,7 +121,8 @@ review looks again. At most two fix rounds; after that the pull request
 stays draft and its body names what is still open. Notes do not block.
 The builder may take them along, or ask the user once whether they
 become improvement items (a short spec each with `parent:` set, named by
-`pulse number --apply`, committed and pushed, then `pulse new imp ... --spec`).
+`pulse number --apply`, committed on a docs branch from `origin/<base>` after
+`git fetch origin` and pushed, then `pulse new imp ... --spec`).
 
 ## Repo mode
 
@@ -145,7 +148,8 @@ Write `_devprocess/analysis/REVIEW-<YYYY-MM-DD>.md`: at most ten
 findings, ordered by harm, each with place, evidence, and a suggested
 change. Then ask the user once which findings become improvement items;
 each gets a short spec with `parent:` set, named by `pulse number --apply`,
-committed on a docs branch and pushed, then `pulse new imp "<title>" --spec <path>`.
+committed on a docs branch from `origin/<base>` after `git fetch origin` and
+pushed, then `pulse new imp "<title>" --spec <path>`.
 
 ## Keywords
 Code review, review, PR review, clean code, maintainability, lean code,

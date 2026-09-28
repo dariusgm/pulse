@@ -107,16 +107,17 @@ the same time.
 
 Each person works with one or more agents. The next item comes from the
 ramp (approved, specified, planned, not blocked, not taken), and
-`pulse go` plans, builds, reviews, and lands it. In hours, not weeks. One
+`pulse go` plans, builds, and reviews it, and opens its pull request for
+your merge. In hours, not weeks. One
 constraint:
 nobody works on something that has not passed the filter. Spontaneous
 ideas go to the Ideas channel, not directly into code.
 
 The V-Model walk runs inside this layer: [`/pulse`](/guides/pulse)
 says where things stand and what comes next, the phase skills
-([`/pulse-ba`](/guides/pulse-ba), [`/pulse-re`](/guides/pulse-re),
-[`/pulse-build`](/guides/pulse-build) with its [planning](/guides/pulse-plan)
-and [review](/guides/pulse-review) steps,
+([`/pulse-ba`](/guides/pulse-ba), [`/pulse-re`](/guides/pulse-re) with
+its [planning](/guides/pulse-plan) step, [`/pulse-build`](/guides/pulse-build)
+with its planning and [review](/guides/pulse-review) steps,
 [`/pulse-audit`](/guides/pulse-audit)) cover partial cycles, and
 [`/pulse-go`](/guides/pulse-go) plans and builds every approved item at
 once, each in its own worktree ([Parallel work](/concepts/parallel-work)).
@@ -195,7 +196,9 @@ one home ([Where things live](/concepts/where-things-live)):
   Questions a person cannot answer alone travel as pull request
   comments or come up in the sync call.
 - Pull requests and commits: every commit names its item
-  (`Refs: #<n>`), every pull request closes one.
+  (`Refs: #<n>`), every build pull request closes its item
+  (`Closes #<n>`); a spec pull request, the fallback on a protected
+  base branch, names it with `Refs: #<n>` only.
 - `AGENTS.md`, `CLAUDE.md`, and the Pulse rules: institutional memory
   and working rules, loaded into every session and every subagent.
 
@@ -245,7 +248,7 @@ into a feature immediately. Pulse creates a deliberate pipeline:
 Ideas channel  ->  Sync call filter  ->  Approved  ->  Ramp  ->  Work
    (free flow)    (10 min review,      (pulse       (order:    (pulse go:
                   matches against BA   approve,     pulse      plan, build,
-                  and roadmap)         label        rank)      review, land)
+                  and roadmap)         label        rank)      review, PR)
                                        pulse:approved)
 ```
 
@@ -379,10 +382,10 @@ implicit and explicit design decisions that already exist in the
 codebase and records them as decision records marked `Inferred from
 codebase`, so the next person adapts to a named decision instead of an
 unnamed pattern.
-[`/pulse-build`](/guides/pulse-build) runs a critical review against the real
-codebase before any new feature implementation begins. If the
-existing code conflicts with a planned decision, the record is
-amended before the implementation, not after.
+Planning, which [`/pulse-re`](/guides/pulse-re), [`/pulse-build`](/guides/pulse-build), and
+[`pulse go`](/guides/pulse-go) run before any build, reviews the design against the
+real codebase first. If the existing code conflicts with a planned
+decision, the record is amended before the implementation, not after.
 
 What changed: the
 [design trigger](/concepts/v-model#the-v-is-iterative) formalises the
@@ -491,7 +494,7 @@ Reply. Provenance is exactly the design intent of the artifact set.
 [Writeback](/concepts/v-model#writeback) keeps decision records and
 specs in sync with the code. Decision records in MADR format carry
 context, decision, alternatives, and consequences. Every commit names
-its item, every pull request closes one, every item's record links its spec.
+its item, every build pull request closes one, every item's record links its spec.
 The [traceability chain](/concepts/v-model#the-traceability-chain)
 means any line of code traces back to a business motivation in the BA.
 

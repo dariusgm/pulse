@@ -48,7 +48,7 @@ Documents and code travel through Git: BA documents, specs, PLANs, and decisions
 
 **Requirements engineering (`/pulse-re`).** Turns the BA into an epic, features, requirements, and tech-agnostic success criteria, writes the architect handoff, and registers each item on the board. Features are cut so that each merge back to the base branch reads well on its own: one feature, one traceable merge, never a monolith. You read each spec and approve it with `pulse approve`: that means build it.
 
-**Plan (inside `/pulse-build` and `/pulse-go`).** A PLAN per item: tasks, the files each task touches, waves of tasks that can run at once, the spec tests as the first wave, and the decisions made on the way. `pulse go` plans every approved item on its own; a PLAN waits for you only when something holds it (a risk flag or `effort: L` in the spec, `needs:` in the PLAN, or `plan_approval = "manual"`). A decision that constrains later work gets a record behind the router in `_devprocess/decisions/`.
+**Plan (inside `/pulse-re`, `/pulse-build`, and `/pulse-go`).** A PLAN per feature, improvement, or fix (an epic gets no PLAN): tasks, the files each task touches, waves of tasks that can run at once, the spec tests as the first wave, and the decisions made on the way. `/pulse-re` plans what you approve in its session right after the approval, `/pulse-build` an item it starts without a PLAN, and `pulse go` every approved item still without one, on its own; a PLAN waits for you only when something holds it (a risk flag or `effort: L` in the spec, `needs:` in the PLAN, or `plan_approval = "manual"`). A decision that constrains later work gets a record behind the router in `_devprocess/decisions/`.
 
 **Build (`/pulse-build`).** The spec tests come first, one per requirement, red, then frozen: from there the code changes, never those tests. Unit tests where logic branches, the smallest change, and done only when the feature's Activation Path exists in the code. `/pulse-build` also writes tests for code that has none yet.
 
@@ -65,7 +65,7 @@ Every command can be called on its own. In the flow, one phase hands over to the
 | Stop | What you decide |
 |---|---|
 | The business analysis | the problem, the users, and the scope are right |
-| Each spec (`pulse approve`) | this gets built: planning, build, and the gates follow in ramp order |
+| Each spec (`pulse approve`) | this gets built: a spec you approve in the `/pulse-re` session is planned there at once and built without a stop, any other goes through planning, build, and the gates in ramp order |
 | A PLAN, only when something holds it (`pulse approve-plan`) | a risky PLAN is right: a risk flag or `effort: L` in the spec, `needs:` in the PLAN, or `plan_approval = "manual"` |
 | The merge of each feature's pull request | the feature goes into the base branch after tests, review, and audit passed |
 

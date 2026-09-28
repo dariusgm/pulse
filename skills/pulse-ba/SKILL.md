@@ -38,8 +38,8 @@ Files live flat in `_devprocess/analysis/`: `BA-{PROJECT}.md` for the
 Project-BA, `BA-{slug}.md` for every Item-BA. An Item-BA's `issue:` is
 its draft or the issue it adopted (next section). Frontmatter carries
 identity and document relations only
-(`issue`, `project-ba-ref`, `personas`, `validity`). Work state (open,
-ready, in progress, done) lives in GitHub, never in the file.
+(`issue`, `project-ba-ref`, `personas`, `validity`). Work state (draft,
+approved, taken, blocked, done) lives on the board, never in the file.
 
 ## Start on the board
 
@@ -77,7 +77,7 @@ Pulse set up with its labels: when `pulse status --json` says
    pulse new epic "Project BA: <product>" --draft --phase analysis
    ```
 
-3. Write on a docs branch from the base branch: `docs/<n>-<slug>` for an
+3. Write on a docs branch from `origin/<base>` after `git fetch origin`: `docs/<n>-<slug>` for an
    Item-BA, `docs/<slug>` for a Project-BA; `/pulse-re` continues on it.
 
 ## What you create
@@ -242,9 +242,9 @@ Question depth as orientation, never as a limit: A about 3 to 5
 questions (who is the user, what is the problem, how do they solve it
 today); B about 8 to 12 (personas, needs functional and emotional,
 touchpoints, trends, closing with the HMW question); C about 15 to 20,
-filling the whole board: propose at least two personas and confirm each
-before going on, cite the persona or statement every need comes from,
-and ask for existing data before trends and market players.
+filling the whole Exploration Board: propose at least two personas and
+confirm each before going on, cite the persona or statement every need
+comes from, and ask for existing data before trends and market players.
 
 Explore is done for PoC and MVP when at least one persona is fully
 described, three needs are confirmed, two insights exist per category
@@ -332,7 +332,7 @@ post-release review of it.
    Source: {link}
    ```
 
-4. Contradictions become a new issue under the epic.
+4. Contradictions become a new item under the epic.
 5. If all hypotheses are Confirmed, set `validity: Confirmed by usage`.
 
 ## Quality Gates
@@ -382,19 +382,23 @@ legacy project), move the full document to
    the docs branch, message `docs(ba): <title>`,
    plus `Refs: #<n>` for its draft or adopted issue. A Project-BA names
    `Refs: #<n>` of its draft too. Scope, HMW, critical hypotheses, and open
-   questions go into the commit body as short bullets. Do not push yet:
-   the branch stays on this machine until the person approves in step 3.
-3. Ask for approval, the first gate of the Pulse flow: in at most eight
+   questions go into the commit body as short bullets. Where origin is
+   public (`gh repo view --json visibility`), ask the person once before
+   the first push. Push the docs branch after every commit, from the
+   first one:
+   `git push -u origin docs/<n>-<slug>`, for a Project-BA
+   `git push -u origin docs/<slug>`. The team sees the BA while it is
+   written; the approval in step 3 decides whether it counts.
+3. Ask for approval, the first stop of the Pulse flow: in at most eight
    lines the problem, who has it, the solution hypothesis and its
    strongest assumption, the scope, the success signal and the top risk,
-   then "Is this BA approved? Then I push the docs branch so the team
-   can read it. Or what should change?". A correction goes
+   then "Is this BA approved? Or what should change?". A correction goes
    into the BA and the question comes again. Once it is approved, set
    `validity: Validated` and `validated-by: /pulse-ba on {date}` in its
-   frontmatter, commit that, and push:
+   frontmatter, commit that, and push again:
    `git push -u origin docs/<n>-<slug>`, for a Project-BA
    `git push -u origin docs/<slug>`, then close the Project-BA's draft
-   with `pulse done <n>`: the team reads the BA on its branch now. Then
+   with `pulse done <n>`: the team knows the BA counts now. Then
    invoke the pulse-re skill
    (`/pulse-re`) at once in this session, with the draft number as its
    argument: the approval covers it, so never ask whether to continue. It

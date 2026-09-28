@@ -37,7 +37,7 @@ The [first business analysis tutorial](./first-business-analysis) shows this ste
 - `_devprocess/analysis/EXPLORE-retrospectives.md`: the Exploration Board, for a proof of concept or an MVP
 - no Item-BA yet: the first epic of a new project comes straight from the Project-BA; a later epic gets an Item-BA of its own, which inherits the personas by reference
 
-Sebastian approves the BA. The skill pushes it on its docs branch, so Alice and Bob can read it, and goes on with requirements in the same session.
+The skill pushed the BA on its docs branch from its first commit, so Alice and Bob could read it while it grew. Sebastian approves it, and the skill goes on with requirements in the same session.
 
 ::: tip Methods the BA agent will propose
 During this phase the agent stops the interview whenever a gap appears
@@ -73,7 +73,7 @@ The BA becomes an epic and its features, each a file in the repository:
 - `requirements/features/FEAT-01-01-anonymous-cards.md`, `FEAT-01-02-vote-and-rank.md`, `FEAT-01-03-action-items.md`: user stories, success criteria without technology ("a participant adds a card in under 10 seconds"), and an Activation Path that names how a user reaches the feature
 - `requirements/handoff/architect-handoff.md`: what the plan must respect
 
-Each item is on the board from the moment `/pulse-re` names it, as a draft (`pulse new feat "Vote and rank" --draft` returns #3), so Alice and Bob see a spec in progress and who writes it. Once the specs pass validation, `/pulse-re` runs `pulse number --apply`, which starts each file name with its ID (`EPIC-01`, `FEAT-01-02`: the second feature of the first epic), commits them on the docs branch, pushes it, and attaches each spec to its draft; before its pull request it runs `pulse check --spec` on the numbered specs:
+Each item is on the board from the moment `/pulse-re` names it, as a draft (`pulse new feat "Vote and rank" --draft` returns #3), so Alice and Bob see a spec in progress and who writes it. Once the specs pass validation, `/pulse-re` runs `pulse number --apply`, which starts each file name with its ID (`EPIC-01`, `FEAT-01-02`: the second feature of the first epic), commits them on the docs branch, pushes it, and attaches each spec to its draft; before its last push it runs `pulse check --spec` on the numbered specs:
 
 ```bash
 pulse new epic "Retro board" --spec _devprocess/requirements/epics/EPIC-01-retro-board.md --issue 1
@@ -82,11 +82,13 @@ pulse new feat "Vote and rank" --parent 1 --spec _devprocess/requirements/featur
 pulse new feat "Action items" --parent 1 --blocked-by 3 --spec _devprocess/requirements/features/FEAT-01-03-action-items.md --issue 4
 ```
 
-Then it commits what `pulse new` wrote into the specs, pushes again, and opens a pull request with the specs into `develop`. Each feature is cut so that its merge reads well on its own: one feature, one traceable merge. Action items need the ranking first, so #4 waits for #3. The team agrees in the sync call that all three are specified well enough. Sebastian runs `pulse approve 2 3 4`, which merges the pull request into `develop` first, because agents plan from the specs as the base branch has them, and puts them on the ramp.
+The numbers are examples: the Project-BA's draft from step 1 took a number too, so on your board they differ.
+
+Then it commits what `pulse new` wrote into the specs and pushes again, without a pull request. Each feature is cut so that its merge reads well on its own: one feature, one traceable merge. Action items need the ranking first, so #4 waits for #3. The team agrees in the sync call that all three are specified well enough. Sebastian runs `pulse approve 2 3 4`, which merges the docs branch into `develop` first, because agents plan from the specs as the base branch has them, and puts them on the ramp.
 
 ## Step 3: Plan
 
-Planning runs inside the build commands: `pulse go` plans each approved feature before it builds it, and `/pulse-build` plans an item it starts without a PLAN. One PLAN per feature in `_devprocess/plans/`: the tasks, the files each task touches, and the decisions made on the way with the options that lost. Tasks that touch different files share a wave and can run at once. A decision that later changes must respect ("cards are stored without author") becomes a decision record behind the router in `_devprocess/decisions/README.md`.
+Here planning runs inside the build commands, because the team approved in the sync call, after the RE session: `pulse go` plans each approved feature before it builds it, and `/pulse-build` plans an item it starts without a PLAN. A feature you approve in the `/pulse-re` session is planned right there, in the same session; an epic gets no PLAN. One PLAN per feature in `_devprocess/plans/`: the tasks, the files each task touches, and the decisions made on the way with the options that lost. Tasks that touch different files share a wave and can run at once. A decision that later changes must respect ("cards are stored without author") becomes a decision record behind the router in `_devprocess/decisions/README.md`.
 
 The files lists matter beyond the item: the ramp compares them to keep parallel work apart.
 
@@ -128,8 +130,8 @@ _devprocess/
   decisions/      README.md (router) and the records it routes to
 ```
 
-On the board: one record per item (#1 to #4, plus any fixes), closed by the pull requests that delivered them. Every line of code traces back to the BA through the spec, the PLAN, the commit (`Refs: #3`), and the pull request (`Closes #3`).
+On the board: one record per feature (#2 to #4, plus any fixes), closed by the pull requests that delivered them; the epic #1 stays open until someone closes it with `pulse done 1`. Every line of code traces back to the BA through the spec, the PLAN, the commit (`Refs: #3`), and the pull request (`Closes #3`).
 
 ## Pausing and resuming
 
-Say "stop" at any time. Nothing gets lost: the specs are in the repository and the state is on GitHub. Later, `/pulse` reads both and recommends the next step.
+Say "stop" at any time. Nothing gets lost: the specs are in the repository and the state is on the board. Later, `/pulse` reads both and recommends the next step.

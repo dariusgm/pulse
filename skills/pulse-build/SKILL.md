@@ -23,8 +23,8 @@ nothing is done until the evidence says so.
    claim belongs to this session. Exit code 1 prints why:
    - is closed: pick the next item from `pulse status`.
    - is not approved: ask the user whether to build it. On the user's
-     yes, run `pulse approve <n>` and claim again: a spec still in its
-     open spec pull request is merged into the base branch first. Never
+     yes, run `pulse approve <n>` and claim again: a spec still on its
+     branch of origin is merged into the base branch first. Never
      approve on your own.
    - is blocked by an open item: that item comes first.
    - names a file another item holds (`<file> is in use by #m`): #m
@@ -39,10 +39,15 @@ nothing is done until the evidence says so.
      the work (the refusal names it): step 3.
    - went to a session that claimed at the same moment: pick the next
      item.
-3. Branch `<type>/<n>-<slug>` from the base branch in `.pulse/config.toml`
-   (`feat`, `imp`, or `fix`). When that branch is on origin already (a
-   planning run or an earlier holder pushed it, `pulse show` names it),
-   continue on it and merge the current base in first. A feature whose
+3. Start from the start point `pulse claim` names: the item's branch on
+   origin (a planning run or an earlier holder pushed it), where you
+   continue and merge `origin/<base>` in first, else `origin/<base>`,
+   fetched by the claim, for a new branch `<type>/<n>-<slug>` (`feat`,
+   `imp`, or `fix`). When it says the start point is not checked, the
+   rest of the line says why: branch only after `pulse claim <n>`, run
+   again, names a start point, and show the person that line while it
+   does not. When it names a branch only this clone has, push that
+   first. A feature whose
    one blocker has a ready pull request but is not merged yet branches
    from the blocker's branch instead, and its PR targets that branch.
    When several items run in parallel, each gets its own worktree.
@@ -92,6 +97,12 @@ what holds, push the item branch, and give the item back with a note
 that stays on the item for whoever takes it next:
 `pulse release <n> --note "<why>; the work is on origin/<branch>"`.
 
+A session told that it no longer holds the item (the hook says so, or
+`pulse beat` exits with 1) stops the work on it: it pushes nothing of it,
+gives nothing back, and tells the person. Only when the news itself
+names `pulse release <n>` (a claim race lost to an older claim) does it
+run that command, which takes just its own assignee and mark off the item.
+
 When something breaks unexpectedly: `references/debugging.md`. Root cause
 before any fix; after three failed fixes, stop and question the design
 with the user.
@@ -110,12 +121,11 @@ an item is invisible; `pulse check` finds it.
 `_devprocess/requirements/fixes/{slug}.md` from `templates/FIX-TEMPLATE.md`,
 with the symptom and what is known about the cause, and `parent:` set;
 `pulse number --apply` names it `FIX-{ee}-{ff}-{nn}-{slug}.md`. Commit it on a docs
-branch from the base branch and push it, then register it:
+branch from `origin/<base>` after `git fetch origin` and push it, then register it:
 `pulse new fix "<symptom>" --parent <feature> --spec <path>`. Commit what
-it wrote, push again, and open a pull request into the base branch. Ask
-whether to fix it now; on the user's yes run `pulse approve <n>`,
-which merges that pull request into the base branch first, and build it
-here.
+it wrote and push again; the spec needs no pull request. Ask whether to
+fix it now; on the user's yes run `pulse approve <n>`, which merges
+that docs branch into the base branch first, and build it here.
 
 **Fixing one:** a test that reproduces the bug comes first. Then the
 regression cycle: the test passes with the fix, fails with the fix

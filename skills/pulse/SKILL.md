@@ -35,7 +35,7 @@ Take the first row that applies. In Codex, name each command as
 | Project-BA is a Draft | `/pulse-ba` in Validation Mode |
 | A new epic or feature is wanted | `/pulse-ba` for its Item-BA |
 | A validated Project-BA or an Item-BA exists, no epics or features registered yet | `/pulse-re` |
-| Specs wait for approval (`pulse status`: "not approved") | show each spec's goal, scope, and success criteria; `pulse approve <n>` on the user's yes, which means build it; a spec still in its one open spec pull request is merged into the base branch first. It refuses a spec in no such pull request (R1) and, for a feature, improvement, or fix, one that breaks R2 to R6: then `/pulse-re` on that spec (an epic needs R1 only) |
+| Specs wait for approval (`pulse status`: "not approved") | show each spec's goal, scope, and success criteria; `pulse approve <n>` on the user's yes, which means build it; a spec still on its branch of origin is merged into the base branch first, without a pull request. It refuses a spec on no branch of origin (`/pulse-re` pushes it) or on several, both R1: if one of these branches carries the other's work too (a stacked docs branch), approve that branch's item first; it brings this spec along. Otherwise keep the spec on one branch: remove it from the others, push, and approve again. It refuses a branch that changes more than `_devprocess/` (a spec on a build branch comes with that branch's pull request), a branch that does not merge cleanly (merge `origin/<base>` into it, keep both sides, push, and approve again), and, for a feature, improvement, or fix, a spec that breaks R2 to R6: then `/pulse-re` on that spec (an epic needs R1 only) |
 | Items are approved but their spec does not pass R1 to R6 (`pulse check`) | `/pulse-re` on that spec |
 | A PLAN waits for a person (`pulse status`: "plan waits for you") | show its goal, decisions, and risks; `pulse approve-plan <n>` on a yes |
 | Approved items with a ready spec, or ready items, and free slots | `/pulse-go` (plans what has no PLAN, then builds all in parallel), or `/pulse-build <n>` for one in this session (it plans first when there is no PLAN) |
@@ -76,7 +76,7 @@ and the item's spec records the decision.
 | `/pulse-re` | epic, features, success criteria, registered items |
 | `/pulse-build` | one item test-first (planned first when it has no PLAN), bugs, tests for existing code |
 | `/pulse-audit` | security audit |
-| `/pulse-go` | start everything unblocked, in parallel |
+| `/pulse-go` | plan and build every approved item in parallel |
 | `/pulse-map` | live map: who works on what, what is ready |
 | `/pulse-setup` | activate, configure, deactivate |
 | `/pulse-realign` | take over an existing codebase or a DIA project |

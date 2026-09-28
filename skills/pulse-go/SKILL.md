@@ -31,10 +31,10 @@ ramp releases: `pulse go`.
 | `items` (default) | every ready item with files disjoint from running work, up to `cap` |
 | `max` | as `items`; inside an item, task waves run as parallel subagents |
 
-Two constraints hold at every level: blockers first (GitHub knows the
+Two constraints hold at every level: blockers first (the board holds the
 edges), and nothing runs at the same time as another item that touches
 one of its files (the PLANs' `files:` lists). The order is the team's rank
-(`pulse rank`, or dragging in the map); unranked items follow the
+(`pulse rank`, or moving it with `m` in the map); unranked items follow the
 critical path.
 
 A feature with exactly one open blocker whose pull request is ready (all
@@ -47,11 +47,12 @@ merged, the next run moves the stacked pull request to the base branch.
 An item is built only when it is ready: approved, its spec passes R1 to R6,
 its PLAN passes P1 to P5 and is approved, no blocker open. An approved item
 with a ready spec and no PLAN gets a planning job first (free slots only,
-in ramp order): the agent writes the PLAN on the item's branch, Pulse pushes
-it and gives the claim back. With `plan_approval = "auto"` (default) the
-next round builds it on the same branch; a risk flag or effort L in the
-spec, `needs:` in the PLAN, or `plan_approval = "manual"` leaves it on
-"plan waits for you" until `pulse approve-plan <n>`. Planning does not
+in ramp order): the agent writes the PLAN on the item's branch, and Pulse
+pushes it. With `plan_approval = "auto"` (default) the next round builds it
+on the same claim and branch when the ramp lets it, else the claim goes
+back until a later round; a risk flag or effort L in the spec, `needs:` in
+the PLAN, or `plan_approval = "manual"` leaves it on "plan waits for you"
+until `pulse approve-plan <n>`, and the claim goes back. Planning does not
 wait for blockers, building does.
 
 ## Run it
@@ -124,7 +125,9 @@ refuses a second run in the clone, so check `pulse status` first.
      pushed and the claim stays, even when the run is killed later: the
      user looks at the named paths before anything runs again. A draft
      held this way starts its PR text with "Held by `pulse go`"; no run
-     takes it up again until the user takes that note out.
+     takes it up again until the user takes that note out. An item whose
+     claim went to someone else (`lost #n to ...`) pushed nothing; its
+     work stays in the worktree, and the item is its holder's.
    - **limited:** an agent hit its usage limit; its item went back with
      a note, and another agent with a free slot takes it in this run.
      When no other agent is left, the item waits on the ramp for a
@@ -151,7 +154,8 @@ refuses a second run in the clone, so check `pulse status` first.
      `.git/pulse/go/discovered.md` and in the PR. The output gives one
      line per item: the first line of its notes and the path of
      `discovered.md`. After the user agrees, write a spec for each,
-     commit and push it, and only then register it with `pulse new
+     commit it on a docs branch from `origin/<base>` after
+     `git fetch origin`, push it, and only then register it with `pulse new
      <kind> "<title>" --spec <path>`: the record needs the spec on
      origin.
    - `integration`: with two ready PRs or more (drafts do not count) the

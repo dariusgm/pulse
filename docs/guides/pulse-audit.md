@@ -34,7 +34,8 @@ asks nobody and runs in two steps:
    days old, and the files and manifests changed since the previous audit
    that counted in this clone (`.git/pulse/audit-context.json`). It does no live lookup of its own.
    It triages the findings from source to sink, reads the changed code,
-   and writes `AUDIT.md`:
+   and writes `AUDIT.md` where the brief says (the worktree root, or in
+   `pulse go` the path it names beside the checkout):
 
 ```
 Verdict: block
@@ -103,6 +104,9 @@ with `--run` and `--record`, when:
   checked, and what not);
 - there is no scan of this commit, for example a subagent wrote the
   report without `pulse audit <n>` running the scan first;
+- the report came without a brief of this run: `pulse audit <n>` (or
+  `--run`) notes HEAD and the working tree before the session, and
+  `--record` reads that note once;
 - the verdict is `pass` while the OSV lookup did not run (`offline`,
   `error`) or left dependencies unchecked (`partial`: a lockfile it could
   not read, or a `package.json`, `pyproject.toml` or version range in

@@ -16,9 +16,10 @@ questions and reports.
 
 - Inside a git repository with a GitHub remote.
 - `gh --version` at 2.94 or newer and `gh auth status` green. Work state
-  lives in GitHub issues; older `gh` lacks parent, sub-issue, and blocker
-  support. If it is older, name the upgrade (`brew upgrade gh` on macOS)
-  and carry on: config and anchors work without it.
+  lives on the board, whose records are GitHub issues; older `gh` lacks
+  parent, sub-issue, and blocker support. If it is older, name the upgrade
+  (`brew upgrade gh` on macOS) and carry on: config and anchors work
+  without it.
 
 ## 2. Ask, one question per turn
 
@@ -109,8 +110,9 @@ and leave it.
 In Codex, also offer rules that let Codex run `pulse` without asking;
 it still asks before `approve`, `approve-plan`, `rank`, and `done`,
 which a person decides, before a handover with `release --take` or
-`claim --take`, and before `pulse -- <command>`; every other `claim`
-and `release` runs without asking. In Full access, where Codex never
+`claim --take`, before `release --drop-unpushed`, and before
+`pulse -- <command>`; every other `claim` and `release` runs without
+asking. In Full access, where Codex never
 asks, it refuses these commands instead: give the person the command
 for their own terminal. The rules do not change with a Pulse update;
 when the changelog names a change to them, offer
@@ -178,8 +180,8 @@ hooks are trusted, and the result of `pulse check`, which is clean right
 after setup.
 
 Then offer to commit `.pulse/config.toml` and the agent files setup
-changed or created on a branch such as `chore/pulse-setup` and push
-it, for a pull request into the base branch: a clone without the
+changed or created on a branch such as `chore/pulse-setup`, from
+`origin/<base>` after `git fetch origin`, and push it, for a pull request into the base branch: a clone without the
 config has Pulse switched off.
 Never commit them on the base branch; the git hook, once written,
 refuses that.
@@ -188,7 +190,7 @@ refuses that.
 
 Pulse reads `.dia/config.toml` as a fallback, so `mode = "off"` stays off.
 The anchor block replaces an old DIA block in place, never twice. Moving
-the old BACKLOG.md into issues is `/pulse-realign`, not this skill.
+the old BACKLOG.md onto the board is `/pulse-realign`, not this skill.
 
 ## Deactivate
 

@@ -22,8 +22,8 @@ The commands are spelled as in Claude Code, on this page and on the map. In Code
 | Code exists but no BA and no specs, or a project from the predecessor plugin | [`/pulse-realign`](./pulse-realign) |
 | The project BA is a draft | `/pulse-ba` in Validation Mode |
 | A new epic or feature is wanted | `/pulse-ba` for its item BA |
-| A validated project BA or an item BA exists, no epics or features yet | [`/pulse-re`](./pulse-re): it commits and pushes the specs, registers them with `pulse new --spec`, commits and pushes what that wrote, and opens a pull request |
-| Specs wait for approval ("not approved" in the ramp) | read each spec, then `pulse approve <n>`, or approve spec in the map, means build it. A spec still in its one open spec pull request is merged into the base branch first, so nobody merges it on GitHub. `pulse approve` refuses a spec in no such pull request (R1) and, for a feature, improvement, or fix, one that breaks one of R2 to R6 (an epic needs R1 only) |
+| A validated project BA or an item BA exists, no epics or features yet | [`/pulse-re`](./pulse-re): it commits and pushes the specs, registers them with `pulse new --spec`, and commits and pushes what that wrote, without a pull request |
+| Specs wait for approval ("not approved" in the ramp) | read each spec, then `pulse approve <n>`, or approve spec in the map, means build it. A spec still on its branch of origin is merged into the base branch first, without a pull request, so nobody merges it on GitHub. `pulse approve` refuses a spec on no branch of origin or on several (R1) and, for a feature, improvement, or fix, one that breaks one of R2 to R6 (an epic needs R1 only) |
 | Approved items whose spec does not pass `pulse check` (R1 to R6) | [`/pulse-re`](./pulse-re) on that spec |
 | A PLAN waits for a person ("plan waits for you" in the ramp) | read its goal, decisions, and risks; `pulse approve-plan <n>` |
 | Approved items and free slots | [`/pulse-go`](./pulse-go) plans what has no PLAN and builds all of them, [`/pulse-build <n>`](./pulse-build) for one |
@@ -49,11 +49,11 @@ Phases run forward by default and loop back when the work learns something: a bu
 | `/pulse-re` | epic, features, success criteria, registered items |
 | `/pulse-build` | implementation, test first (planned first when it has no PLAN), bugs, tests for existing code |
 | `/pulse-audit` | security audit: the third gate of every feature, or by hand with a chosen scope |
-| `/pulse-go` | build everything ready, in parallel |
+| `/pulse-go` | plan and build every approved item in parallel |
 | `/pulse-map` | the live map |
 | `/pulse-setup` | activate, configure, deactivate |
 | `/pulse-realign` | take over existing code, or move a project from the predecessor plugin |
 
-[Planning](./pulse-plan) and [review](./pulse-review) run as steps inside `/pulse-build` and `/pulse-go`.
+[Planning](./pulse-plan) runs as a step inside `/pulse-re`, for each feature, improvement, or fix you approve in its session (an epic gets no PLAN), and inside `/pulse-build` and `/pulse-go`; [review](./pulse-review) runs inside `/pulse-build` and `/pulse-go`.
 
 The `pulse` command line behind these commands is documented in [Commands](../reference/commands).

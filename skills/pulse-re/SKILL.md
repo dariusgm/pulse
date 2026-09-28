@@ -2,8 +2,8 @@
 name: pulse-re
 description: >
   Requirements engineering: turns a business analysis into an epic,
-  features, and tech-agnostic success criteria, creates their GitHub
-  issues, and writes the architect handoff. Use when the user mentions
+  features, and tech-agnostic success criteria, registers them on the
+  board, and writes the architect handoff. Use when the user mentions
   "Requirements", "RE", "Define Features", "Create Epics", "User
   Stories", "Success Criteria", "NFRs", "ASRs", "Acceptance Criteria",
   or when a BA exists and needs formalization.
@@ -33,7 +33,7 @@ question first (in the user's working language):
 > "Is this a new feature, an improvement on an existing feature, or a
 > fix for a bug? If an improvement or fix: which feature?"
 
-Improvements and fixes hang under their feature (parent links on GitHub).
+Improvements and fixes hang under their feature (parent links on the board).
 
 ## On the board
 
@@ -63,9 +63,15 @@ the same one.
    yes.
 3. Keep the heartbeat while you work: `pulse beat <n> spec` when you
    start an item's spec and after each section you write. After 30
-   minutes without one, the board shows no sign of life.
+   minutes without one, the board shows no sign of life. When it exits
+   with 1, the item went to someone else: stop the work on it, push
+   nothing of it, and tell the person.
 4. Write on the docs branch the BA pushed (`docs/<n>-<slug>`, for a
-   Project-BA `docs/<slug>`), else start one from the base branch.
+   Project-BA `docs/<slug>`), else start one from `origin/<base>` after
+   `git fetch origin`.
+   Push the docs branch after every commit, from the first one: the
+   team sees the specs grow, and whoever takes the draft over starts
+   from them.
 
 ## Inputs and outputs
 
@@ -360,19 +366,22 @@ Each call ends the draft and gives its claim back, and writes `issue:`
 and `parent:` into the spec and a line into the epic's `## Items`.
 Dependencies between items become `--blocked-by`, never prose. Then run
 `pulse check --spec <path> ...` with every spec of this run and fix what
-it reports: once a spec is merged, `pulse approve` refuses its item for
+it reports: `pulse approve` refuses to merge and approve its item for
 the same findings, and the git hook reads them only for approved items.
-Commit what `pulse new` wrote and your fixes, push again, and open a
-pull request into the base branch.
+Commit what `pulse new` wrote and your fixes, and push again.
 
 Its merge belongs to the approval, because agents plan from the
 spec as the base branch has it (rule R1): when the team wants an item
 built, `pulse approve <n>` records the decision (on their yes, or
-approve spec in the map) and merges this pull request into the base
-branch first; nobody merges it on GitHub. It merges only a pull request
-that changes nothing outside `_devprocess/`, and refuses while the spec
-breaks R2 to R6 for a work item. Items still under discussion stay
-unapproved.
+approve spec in the map) and merges this branch into the base branch
+first, without a pull request; nobody merges it on GitHub. It merges
+only a branch that changes nothing outside `_devprocess/`, refuses while
+another branch of origin carries the spec too, and refuses while the
+spec breaks R2 to R6 for a work item. Items still under discussion stay
+unapproved. When `pulse approve` answers that the branch does not merge
+cleanly (another feature of the epic merged first, and both added their
+line at the end of its `## Items`), merge `origin/<base>` into the docs
+branch, keep both lines, commit, push, and approve again.
 
 ## Activation Path format
 
@@ -432,15 +441,23 @@ and report lines: `references/status-promotion-prompt.md`.
 ## Handoff
 
 1. Report what you produced: epic, features, architect handoff, issue
-   numbers, ASR counts, one Parent-BA status line, and the pull request.
-2. Put each epic and feature up for approval, the second gate of the
+   numbers, ASR counts, one Parent-BA status line, and the pushed branch.
+2. Put each epic and feature up for approval, the second stop of the
    Pulse flow: per spec its goal, scope, success criteria, and open
    questions in a few lines, with the path to read it in full. A
    correction goes into the spec (commit, push) before it counts as
-   approved. Then
+   approved. On the person's yes, approve with `pulse approve --claim <n>`:
+   it claims a feature, improvement, or fix for planning in this session
+   first, blockers aside, so no live map starts `pulse go` for it, then
+   merges the spec and approves; an epic stays unclaimed. When the claim
+   is refused (another session or person holds the item), nothing is
+   approved: tell the person. Then
    continue with planning (the pulse-plan skill, which has no command)
-   for the approved items (spec merged, `pulse approve <n>` done) in this
+   for the items approved so, in this
    session, without asking; the others stay unplanned until they are
-   approved. When you name the next step to the user, name `/pulse-go`,
-   which plans and builds every approved item, or `/pulse-build <n>` for
-   one.
+   approved. An epic gets no PLAN. Planning hands over as its handoff
+   says, into the build unless something holds the PLAN; an item with an
+   open blocker is planned, then given back (`pulse release <n>`): its
+   build waits for its blockers. For an item
+   approved later, name `/pulse-go`, which plans and builds every
+   approved item, or `/pulse-build <n>` for one.

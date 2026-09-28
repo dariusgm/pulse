@@ -27,7 +27,7 @@ Runs in **Claude Code** and **Codex**, in the terminal and in the VS Code extens
 
 ## Where the work lives
 
-You never write tickets on GitHub. Business analyses, epics, features, and plans are Markdown files in `_devprocess/`, written by the agents together with you and reviewed in pull requests like code. GitHub keeps the board: one small record per item (type, ready, who has it, what it waits for, done), and only the `pulse` command writes it. Agents ask instead of reading: `pulse status --json` answers "what can I start?" from a local cache.
+You never write tickets on GitHub. Business analyses, epics, features, and plans are Markdown files in `_devprocess/`, written by the agents together with you and versioned in git like code: your approval merges a spec into the base branch, and a plan travels in the pull request of its build. GitHub keeps the board: one small record per item (type, ready, who has it, what it waits for, done), and only the `pulse` command writes it. Agents ask instead of reading: `pulse status --json` answers "what can I start?" from a local cache.
 
 ## Commands
 
@@ -38,7 +38,7 @@ You never write tickets on GitHub. Business analyses, epics, features, and plans
 | `/pulse-re` | epics and features with success criteria free of technology, registered on the board |
 | `/pulse-build` | test first, smallest change, done only when a user can reach the feature; also tests for existing code |
 | `/pulse-audit` | OWASP Top 10, LLM Top 10, static analysis, dependencies, supply chain |
-| `/pulse-go` | build every ready item in parallel, one worktree and one agent each |
+| `/pulse-go` | plan and build every approved item in parallel, one worktree and one agent each |
 | `/pulse-map` | the live map in your terminal |
 | `/pulse-setup` | switch Pulse on in a project |
 | `/pulse-realign` | take over existing code, or move a project from the Digital Innovation Agents plugin |
@@ -85,7 +85,7 @@ Pulse replaces the Digital Innovation Agents plugin (DIA, versions up to 4.0.2).
 
 1. Understand the problem before designing the solution.
 2. Separate what the system does (observable, free of technology) from how it does it (the plan, decision records).
-3. Every fact has one home: content in the repository, item state on GitHub, rules in hooks, truth in the code.
+3. Every fact has one home: content in the repository, item state on the board, rules in hooks, truth in the code.
 4. Everything a script can decide, a script decides: claims, dependencies, the ramp, the checks.
 5. No claim of success without fresh evidence from this turn.
 

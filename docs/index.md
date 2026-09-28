@@ -57,7 +57,7 @@ Then run `/pulse-setup` in your project (in Codex, trust the Pulse hooks when Co
 
 ## Where the work lives
 
-You never write tickets on GitHub. Epics, features, and plans are Markdown files in your repository, written by the agents together with you and reviewed in pull requests like code. GitHub only keeps the board, one small record per item, so that everyone sees the same state.
+You never write tickets on GitHub. Epics, features, and plans are Markdown files in your repository, written by the agents together with you and versioned in git like code: your approval merges a spec into the base branch, and a plan travels in the pull request of its build. GitHub only keeps the board, one small record per item, so that everyone sees the same state.
 
 <div class="pulse-diagram">
 <!--@include: ./diagrams/where-the-work-lives.svg-->

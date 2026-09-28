@@ -24,7 +24,7 @@ concrete remediation plan.
   feature branch against its base; in the chain without a question
   (below), its verdict and fixes go into the same PR.
 - **Periodic full-codebase audit**: runs on `audit/<YYYY-MM-DD>`,
-  produces a standalone report, and opens a fix or improvement issue per
+  produces a standalone report, and registers a fix or improvement item per
   deferred finding. Follow-ups get their own branches via `/pulse-build`.
 
 ## Scope
@@ -52,11 +52,12 @@ the brief names the as-of date of the bundled references instead):
    (`.git/pulse/audit-context.json`: date, commit, manifests).
 2. Triage the JSON (source to sink through the full tree, false
    positives out) and read the changed code yourself.
-3. Write `AUDIT.md` at the worktree root: first line `Verdict: pass` or
-   `Verdict: block` (block while a Critical or High finding is open),
-   then `Coverage: <what the scan and you checked, and what not>`, then
-   one line per finding, `- [H-1|M-1|L-1] <file>:<line> <CWE>:
-   <what>`. When SCA did not run (`offline`, `error`) or left
+3. Write `AUDIT.md` where the brief says (the worktree root, or in
+   `pulse go` the path it names beside the checkout): first line
+   `Verdict: pass` or `Verdict: block` (block while a Critical or High
+   finding is open), then `Coverage: <what the scan and you checked,
+   and what not>`, then one line per finding, `- [H-1|M-1|L-1]
+   <file>:<line> <CWE>: <what>`. When SCA did not run (`offline`, `error`) or left
    dependencies unchecked (`partial`: a lockfile it could not read, or
    dependencies declared without a lockfile), the Coverage line says
    `SCA unavailable`. Do not change code, do not commit, do not touch
@@ -64,9 +65,9 @@ the brief names the as-of date of the bundled references instead):
 
 `pulse audit <n> --record` keeps the verdict, stamped with the commit,
 and notes the audit for the next brief. It gives no verdict without the
-scan of this commit or without a Coverage line, and none for a pass
-whose SCA was `offline`, `error` or `partial` unless the Coverage line
-says `SCA unavailable`.
+brief of this run, without the scan of this commit or without a
+Coverage line, and none for a pass whose SCA was `offline`, `error` or
+`partial` unless the Coverage line says `SCA unavailable`.
 
 The builder fixes blocking findings, and the chain starts again at the
 tests. Medium and Low findings go into the PR body as notes.
@@ -226,7 +227,7 @@ python3 skills/pulse-audit/tools/report_assembler.py fill \
 `fill` produces the count matrix, P1/P2/P3 buckets, an HONEST tools
 ledger (only tools that ran; kills the semgrep-overclaim), and the
 mandatory "Coverage and limitations" section. Keep the report within the
-`audit` artefact cap; move detail into fix issues if it grows.
+`audit` artefact cap; move detail into fix specs if it grows.
 
 ---
 
@@ -299,7 +300,8 @@ it like any other fix:
    working as FR-02 (unchanged); `parent:` the affected feature (or
    epic). Run `pulse number --apply`: it names the file
    `FIX-{ee}-{ff}-{nn}-<slug>.md` after its place under that parent.
-2. Commit the fix spec and push the branch: `pulse new` takes a spec
+2. Commit the fix spec on a docs branch from `origin/<base>` after
+   `git fetch origin` and push it: `pulse new` takes a spec
    only once its commit is on origin. Then register it:
    `pulse new fix "<title>" --parent <affected feature or epic> --spec <the fix spec>`.
    It writes `issue:` and `parent:` into the spec; the handoff commit
@@ -325,7 +327,8 @@ records, stubs without an open item). It must report nothing.
 1. Report: the audit file, findings resolved, findings deferred with
    their item numbers.
 2. Commit `docs(audit): <scope> <date>` with `Refs:` for the item and
-   the fix items. The body names unresolved P0/P1 findings and why,
+   the fix items, on the branch you audit or a docs branch. Push after
+   every commit. The body names unresolved P0/P1 findings and why,
    architectural concerns that need redesign rather than patching (for
    a future PLAN), and the release verdict: green, yellow, or
    red.

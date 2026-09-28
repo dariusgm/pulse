@@ -5,7 +5,7 @@ description: Every file the method writes, where it lives, and how long it may g
 
 # Artifacts
 
-Everything the method writes lives in `_devprocess/` in your repository, next to the code and reviewed in pull requests like code. The state of each item (approved, taken, blocked, done) never goes into these files; it sits in the item's record on the board ([Where things live](../concepts/where-things-live)).
+Everything the method writes lives in `_devprocess/` in your repository, next to the code and versioned in git like it: the approval merges a spec into the base branch, and a PLAN travels in the pull request of its build. The state of each item (approved, taken, blocked, done) never goes into these files; it sits in the item's record on the board ([Where things live](../concepts/where-things-live)).
 
 ## Directory tree
 
@@ -33,7 +33,7 @@ _devprocess/
 └─ arc42.md                        constraints and quality goals (on request)    planning
 ```
 
-[Planning](../guides/pulse-plan) and [review](../guides/pulse-review) are steps inside `/pulse-build` and `pulse go`. Settings live in `.pulse/config.toml` ([Configuration](./configuration)). Rules for one area of the code live in a path-local `AGENTS.md` beside that code, where an agent finds them when it reads a file there.
+[Planning](../guides/pulse-plan) is a step inside `/pulse-re`, for each feature, improvement, or fix approved in its session (an epic gets no PLAN), and inside `/pulse-build` and `pulse go`; [review](../guides/pulse-review) is a step inside `/pulse-build` and `pulse go`. Settings live in `.pulse/config.toml` ([Configuration](./configuration)). Rules for one area of the code live in a path-local `AGENTS.md` beside that code, where an agent finds them when it reads a file there.
 
 ## Front matter
 
@@ -42,7 +42,7 @@ Every spec carries identity and links, nothing else:
 ```yaml
 ---
 title: Auto-resolve password reset tickets
-issue: 14                                  # the item number on GitHub
+issue: 14                                  # the item number on the board
 parent: ../epics/EPIC-01-agent-core.md     # the epic (or, for a fix, the feature)
 ba-ref: ../../analysis/BA-agent-core.md    # where the why comes from
 subtype: user-facing                       # or library

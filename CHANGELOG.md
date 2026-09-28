@@ -5,6 +5,259 @@ All notable changes to Pulse are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6] - 2026-09-28
+
+### Added
+
+- The live map starts `pulse go` on a key: while approved work waits
+  and no run of the clone lives, NEXT says `g start pulse go: #5, #7`,
+  also where the map does not start a run by itself. `g`, or `Enter` on
+  that line, shows the items, the agent, the test command, and why the
+  map did not start the run; `Enter` starts it apart from the map.
+  Without a test command the line names the command that sets it (#76).
+
+### Changed
+
+- Planning is a step of `/pulse-re` too. When you approve a feature,
+  improvement, or fix in the RE session, the skill runs `pulse approve`
+  (which brings the spec onto the base branch, see #88 below), plans the
+  item right away without asking, and
+  goes on into the build unless something holds the PLAN; an epic gets
+  no PLAN. The guides of `/pulse`, `/pulse-re`, and planning, the
+  V-Model page, the artifacts and commands references, the operating
+  model, and the full V-Model tutorial say so, and the planning skill
+  names effort L among the holds of a PLAN. Tests hold every hand-over
+  between the stops and look through the skills and the rules for a
+  question whether to go on, in the forms the skills used to ask it
+  (#26).
+
+- One name for the place where item state lives: the board. The README,
+  the docs, the command reference (with the help of `pulse new` and
+  `pulse migrate --issues`), and the skills and their references no
+  longer put item state "on GitHub" or content into an issue: a bug's
+  substance goes into its fix spec, its record holds only state. Where
+  it helps, a page says that each record is technically a GitHub issue
+  (#11).
+
+- Work reaches origin as it happens. A session that holds an item and
+  ends with commits on its branch, or its docs branch, that origin
+  lacks is stopped once and told the push. `pulse release` keeps such
+  an item unless `--drop-unpushed` gives it back without them. The
+  rules and skills push after every commit; `/pulse-ba` and `/pulse-re`
+  push their docs branch from the first commit on, so the BA shows
+  while it is written and its approval decides whether it counts (#79).
+
+- Pulse syncs with origin before it hands anything out. `pulse claim`
+  fetches and names the start point: the item's branch on origin, else
+  the base branch as origin has it now, never the local one.
+  `pulse number --apply` and `pulse new --spec` fetch first and refuse when
+  origin does not answer, so an ID another clone pushed is not handed
+  out again and no record links a spec nobody saw on origin. Rules and skills start every branch from
+  there (#78).
+
+- A spec needs no pull request any more. When the spec of an item is
+  not on the base branch and in no open spec pull request, but on
+  exactly one branch of origin, `pulse approve` and approve spec in the
+  map merge that branch into the base branch themselves, push the
+  merge, and then approve. The checks of a spec pull request hold: the
+  merge changes only plain files under `_devprocess/`, the spec at the
+  branch's head passes R1 to R6 (an epic R1), and the map merges only the head its
+  confirmation showed. The confirmation, and `pulse approve` afterwards,
+  name every path the merge changes, with A, M, or D, and the map offers
+  the merge only where `pulse approve` makes it; elsewhere it says why
+  not yet. `Enter` merges nothing its confirmation did not show. The merge commit, `Merge spec of #<n>`, is made without a
+  checkout under your git identity and pushed without force. Several
+  branches that carry the spec, a branch that does not merge cleanly, or
+  a push origin refuses merge nothing and say what to do; on a protected
+  base branch, a spec pull request stays the way. `/pulse-re` and
+  `/pulse-build` push a spec and open no pull request for it, and the
+  rules, skills, and docs say so (#88).
+
+- Rules, skills, templates, docs, and diagrams tell the same flow. A
+  spec approved in the `/pulse-re` session is planned there at once and
+  built without a stop, any other in ramp order; planning runs in `/pulse-re`,
+  `/pulse-build`, and `pulse go`, and `pulse go` opens the pull request
+  for a person's merge. A person's holds are stops, the gates stay tests,
+  review, and audit; the place of item state is the board everywhere.
+  The RE guide no longer promises a Benefits Hypothesis, an ASR level
+  Low, or an architecture gate. `/pulse-build` says what a session does
+  that lost its item, and every list of a person's levers names
+  `release --drop-unpushed`. The map pages name the lights, keys, holds,
+  and reasons as the map shows them, and say that the hold after a
+  failed or stopped run holds only in its clone (#100).
+
+### Fixed
+
+- Of two claims on one item in the same seconds, the older one wins: a
+  claim that finds a fresh mark of someone not yet assigned before its
+  own waits a moment and reads again. Should both still win, a
+  `pulse go` run checks its claim before each push; one that lost the item pushes nothing, opens no
+  pull request, takes its claim back, and names who holds it. An
+  interactive session hears it at its next sign of life, and
+  `pulse beat` exits with 1 (#77).
+
+- The review and the audit of `pulse go` start in a gate directory
+  beside the worktree, with a fresh checkout of the pushed commit, and
+  write their report next to that checkout, at the path the prompt
+  names. They run git on that checkout as `git -C tree diff`, `log`,
+  `show`, or `status`, the four forms their allow list adds, and the
+  prompt names the diff, the spec, the PLAN, and the decision records
+  from where the session starts. Nothing the builder left uncommitted or
+  ignored reaches them, and a tracked `review.md` or `audit.md` stays
+  as it is. The brief of both names changed agent instructions
+  (`CLAUDE.md`, `AGENTS.md`, `.claude/`, `.codex/`, `.agents/`,
+  `.mcp.json`), a report counts only after the brief of this run, a
+  link or FIFO is no report, and `pulse review --run` and
+  `pulse audit --run` end the process group of their session (#36).
+
+- Codex asks before `pulse release --drop-unpushed`, as before
+  `release --take`: `pulse` takes `--drop-unpushed` only right after
+  `release` (`pulse release --drop-unpushed <n>`), where a Codex rule
+  sees it, and exits with 2 anywhere else; `--take` and
+  `--drop-unpushed` never go together, and an agent of `pulse go` may
+  not drop commits. The rules change: update Pulse in Codex, then run
+  `pulse setup --codex-rules` again. The Claude Code rules in the
+  installation tutorial ask there too; add
+  `"Bash(pulse release *--drop-unpushed*)"` to the `ask` list of
+  settings you copied from it before (#87).
+
+- `pulse go` no longer builds on a spec branch named like the item's
+  branch (`feat/563-chat-activity-spec`): a branch of the item that
+  changes nothing but specs against the base branch, or nothing any
+  more, is none to build on; the build starts on a new branch (#73).
+
+- The map (`pulse map`, `pulse status`) and `pulse show` no longer pass
+  escape sequences from titles, notes, errors, the presence log, the
+  last run's report, or a plan's goal to the terminal: every character
+  that is not printable shows as `?`, and a line of the map shows the
+  first line of a text. Only the map writes colors and links, and a
+  warning about a config line Pulse skips shows the line the same way.
+  A confirmation (approve spec, approve plan, unapprove, merge, `g`)
+  opens only where the terminal can show all it confirms, counting each
+  character that is not ASCII as two columns; else the map asks for a
+  larger terminal. While it is open, the map writes it again on every
+  frame, so no line of the map can cover it. A goal in a confirmation
+  takes one row, and `pulse show` keeps the lines of a note. A title
+  with `›` no longer moves the view away from the picked row, the item
+  view runs the row it shows, read spec says why it opens nothing on a
+  path the system refuses, and wide characters (CJK) and spacing marks
+  count by the columns a terminal draws them in, so a line that holds
+  them keeps its width, and messages at the bottom wrap instead of
+  losing their end (#56).
+
+- An `Enter` within a second of `g` in the live map, or of the `Enter`
+  on the `pulse go` line in NEXT that opened the confirmation, no
+  longer starts `pulse go`: typed for another window, or the second of
+  a double `Enter`, it closes the confirmation, and the footer says
+  why. An `Enter` from a second on starts the run as before (#86).
+
+- `pulse check` reads links (C1), code names in a decision record (C3),
+  the Activation Path of a feature spec (C6), and the lines it counts
+  toward a cap (C5, past comments that never close) in linear time. A
+  prepared file of 40,000 characters cost 1 to 8 seconds on every
+  commit, now it costs milliseconds, with the same findings. A link
+  whose target itself holds `[` is no longer checked as a whole; a link
+  inside it is. Findings print without control characters (#41).
+
+- `pulse claim` and `pulse release` no longer name a spec branch as
+  where the work is: the hint names only a branch on origin that
+  `pulse go` would build on, fetched just now and quoted as a shell
+  reads it, and none when origin has only the spec branch (#83).
+
+- `pulse number --apply`, `pulse new --spec`, and `pulse claim` hold
+  the refs git lists after every fetch against the commits origin
+  names: a lock file left behind no longer reads as "origin did not
+  answer", and a fetch that exits without an error but leaves a listed
+  ref on another commit (on macOS, two branch names on origin that
+  differ only in case) no longer counts as fetched. They print git's
+  error, or the refs that differ. `pulse new` and `pulse number`
+  refuse, and `pulse claim` names no start point, only when something
+  they need is not as origin has it: `pulse new` its own branch, also
+  one origin deleted; `pulse number` the history of a branch on origin,
+  so a fetch cut short hands out no ID; `pulse claim` the base branch or
+  a branch of the item. `pulse number` counts a branch whose ref git
+  could not update through the commit origin names, and hands out no ID
+  while git cannot read the history. `pulse status`, `pulse show`, and
+  `pulse approve-plan` name what git said as well, and say that origin
+  did not answer only when git said nothing. Still open for a follow-up:
+  a twin such as `MAIN` that arrives beside an `origin/main` in
+  `packed-refs`, which `pulse claim` does not see, and `pulse go` and
+  the hint on where another holder's work is, which do not check the
+  refs yet (#85).
+
+- A pull request from a fork counts for an item only through its
+  `Closes #n`, which GitHub links only in a pull request into the
+  default branch. Merged from a branch named `feat/12-typo`, it no
+  longer closes #12 at the next `pulse status` or `pulse go`, drops the
+  claim of whoever builds it, or takes it off the map; merged into
+  another base branch, it closes nothing, and `pulse done 12` closes
+  the item. Nothing is built on a fork's branch: no feature stacks on
+  it, `pulse go` takes up no fork's draft and leaves it out of the
+  integration check, and no verdict goes onto it. A stack base comes
+  from origin only, never from a local branch, tag, or commit of the
+  same name. The integration check fetches each branch on its own and
+  names one origin lacks instead of calling it a conflict. Branch names
+  reach the start line of `pulse claim`, the build prompt, the branch
+  lines of the run summary, and handover notes with control characters
+  shown as `?` (#63).
+
+- A session whose item a person took with `pulse release --take`
+  hears it at its next sign of life, the heartbeat or `pulse beat`
+  (which exits with 1), with who has the item now, also when it
+  claimed the item, or registered it as a draft, and has waited
+  since. It stops the work on the item and pushes nothing more of
+  it, and the stop hook asks for no push of it. A session that gave
+  its item back or never held it hears nothing, and a hand-over
+  between two sessions of one person stays silent (#84).
+
+- A review or audit verdict on a pull request counts only from someone
+  who may push: the repository's owner, or a member or collaborator
+  whose permission GitHub names write or admin, Enterprise Managed
+  Users included. GitHub calls people with read access members and
+  collaborators too, so a reader's marker could end the Stop hook's
+  question for the gates, merge a pull request from the map or keep it
+  from merging, and keep `pulse review --publish` from putting the real
+  verdict on the pull request. When GitHub gives no answer (its rate
+  limit, or the 403 for a login that cannot push), such a verdict
+  counts for nothing, and while it is the newest of its gate, no older
+  verdict counts in its place: the Stop hook names GitHub's reason and
+  sends you to `gh auth status` and `gh auth switch` first, and the
+  map merges nothing and shows the reason. A marker counts
+  only on a line of its own, outside quotes and code blocks, and only
+  in a comment of the owner, a member, or a collaborator, read in
+  linear time; the Stop hook asks about each author once, and
+  `--publish` never posts a verdict of your own login twice (#74).
+
+- Handover, approval, and the map say and do the same (#99, with #90).
+  After a take, the old session's stop hook asks for no push and no
+  review or audit, since it reads who holds the item from the board at
+  every stop; `pulse beat` reports a loss once and clears its notes,
+  and names `pulse release <n>` after a lost race; `pulse release <n>`
+  after a take says there is nothing to give back; a new session on
+  another login's item hears who holds it; a draft names its docs
+  branch as where the work is and where the next holder starts.
+  `pulse approve` takes a later correction of a spec on the base branch
+  along when one branch of origin changed it, and
+  `pulse approve --claim` claims a feature, improvement, or fix for
+  planning before it approves it, blockers aside, so no live map starts
+  a run for the item the `/pulse-re` session plans. On the map every
+  confirmation takes no `Enter` within a second of opening it and says
+  `enter came within a second of opening it` (#90), and the item view
+  opens on a reading entry. `merge` is offered only where it goes
+  through: never for a fork's pull request, nor for one whose last
+  commit lacks passing review and audit, where the line and NEXT name
+  the missing runs; its confirmation says when `Enter` makes the pull
+  request a draft again. What `pulse approve` cannot move is grey and
+  counts nowhere, a row that waits for a slot says `queued`, read spec
+  is offered only where the spec is, and an epic's approval says that
+  its features are approved one by one. `pulse status` names
+  `pulse go --detach` where the live map has `g`, `pulse show` prints
+  the stage in the map's words, a teammate's waiting plan names whose
+  it is, and the help names `j k`, Ctrl-C, and `?` as the one key with
+  Shift. The help of `pulse beat`, `pulse claim`, `pulse go`, and
+  `pulse check --spec`, and the preview of `pulse migrate` say what they
+  do; the fake `gh` of the E2E scripts takes `pr ready --undo`.
+
 ## [0.1.5] - 2026-09-27
 
 ### Added

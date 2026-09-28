@@ -14,6 +14,7 @@ runner() is the other way round: the live map starts pulse go when approved work
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import os
 import re
@@ -30,6 +31,7 @@ LINUX = ("x-terminal-emulator", "gnome-terminal", "konsole", "xterm")
 PAUSE = 60                     # seconds between two starts of pulse go from the maps of a clone
 OFF = ("off", "0", "false", "no")                  # PULSE_GO values that switch the start off
 HELD = ("failed", "limited", "stopped", "skipped")  # what the last run did not finish waits for a person
+NO_VERIFY = 'pulse go needs a test command: pulse setup --verify "<cmd>"'   # a footer line: fits 80 columns
 
 
 def pid_file(root: Path) -> Path:
@@ -192,31 +194,94 @@ def trusted(root: Path) -> bool:
     checking out someone's branch, even one pushed to origin, must never run the verify or agents its
     config names (audit of #44, H-1 and H-2)."""
     try:
-        here = (root / ".pulse" / "config.toml").read_bytes()
+        return (root / ".pulse" / "config.toml").read_bytes() in _theirs(root)
+    except OSError:
+        return False
+
+
+def _theirs(root: Path):
+    """The configs origin holds, as they are needed: the one on its default branch, then the one on the
+    base branch that one names; none without origin/HEAD."""
+    try:
         head = subprocess.run(["git", "-C", str(root), "symbolic-ref", "refs/remotes/origin/HEAD"],
                               capture_output=True, text=True, timeout=5).stdout.strip()
     except OSError:
-        return False
+        return
     default = _on_origin(root, head)
     if default is None:
-        return False
-    if here == default:
-        return True
+        return
+    yield default
     base = config._parse(default.decode("utf-8", "replace")).get("base_branch")
     # a plain branch name only: "origin/x", "remotes/...", "heads/..." would name a branch anyone with push
     # access can create under refs/remotes/origin/ (audit of #44, L-1)
-    return isinstance(base, str) and base.split("/")[0] not in ("origin", "remotes", "heads", "tags", "refs") \
-        and _on_origin(root, f"refs/remotes/origin/{base}") == here
+    if isinstance(base, str) and base.split("/")[0] not in ("origin", "remotes", "heads", "tags", "refs"):
+        on_base = _on_origin(root, f"refs/remotes/origin/{base}")
+        if on_base is not None:
+            yield on_base
 
 
-def runner(root: Path, vm: dict, env=os.environ) -> str:
+def differs(root: Path) -> list:
+    """The lines of this clone's .pulse/config.toml that origin's config lacks, [] when origin holds it
+    byte for byte: what a start with this config runs that origin's would not (#76 audit H-1)."""
+    try:
+        here = (root / ".pulse" / "config.toml").read_bytes()
+    except OSError:
+        return []
+    theirs = list(_theirs(root))
+    if here in theirs:
+        return []
+    there = set((theirs[-1] if theirs else b"").decode("utf-8", "replace").splitlines())
+    return [line for line in here.decode("utf-8", "replace").splitlines() if line.strip() and line not in there]
+
+
+def digest(root: Path) -> str:
+    """The config a confirmation showed, to hold Enter to it: a checkout since changes it (#76 audit M-1)."""
+    try:
+        return hashlib.sha256((root / ".pulse" / "config.toml").read_bytes()).hexdigest()
+    except OSError:
+        return ""
+
+
+def waiting(vm: dict) -> list:
+    """The items a run would take: a build that starts next, or an approved item nobody holds that
+    waits for its PLAN. The map's own start and its g see the same (#76)."""
+    ramp = vm["ramp"]
+    return sorted({i["number"] for i in ramp["next"]} | {r["number"] for r in ramp["rows"]
+                                                         if r["stage"] == "needs a plan" and not r["assignees"]})
+
+
+def hold(root: Path, vm: dict, env=os.environ) -> str:
+    """Why the map starts no pulse go by itself for the waiting work: its switch, or the line its own
+    start shows; "" when it would start one (#76)."""
+    if env.get("PULSE_GO", "").strip().lower() in OFF:     # the confirmation says the rest (#99 FR-15)
+        return "PULSE_GO is off here"
+    if config.load(root)["go_autostart"] is not True:
+        return "go_autostart is off"
+    return runner(root, vm, env, start=False)
+
+
+def offer(root: Path, vm: dict, env=os.environ):
+    """What g on the map offers (#76): the waiting items, the agent, the test command, and why the map
+    does not start the run by itself. None while a run of this clone lives or nothing waits."""
+    cfg = config.load(root)
+    items = waiting(vm) if cfg["mode"] == "on" and not vm.get("error") and not go.running(root) else []
+    if not items:
+        return None
+    before = digest(root)      # a checkout while this reads: what it shows binds no Enter (#76 final check)
+    out = {"items": items, "agent": cfg["agent"], "verify": cfg["verify"] or "",
+           "hold": hold(root, vm, env) if cfg["verify"] else "", "differs": differs(root)}
+    return {**out, "config": before if digest(root) == before else ""}
+
+
+def runner(root: Path, vm: dict, env=os.environ, start=True) -> str:
     """The live map starts pulse go (#44) when approved work waits and no run of this clone lives: a
     build that starts next, or an approved item nobody holds that waits for its PLAN. What the last run
     did not finish (failed, at a usage limit, stopped, a claim refused) waits for a person; so does
     every start after a run a person stopped or one that ended before its report, until pulse go
     runs by hand. It starts only with the config origin holds (trusted), and a minute passes between
     two starts. `go_autostart = false` or PULSE_GO=off switch it off. -> the line the map shows, or
-    ''; whatever goes wrong is that line, the map runs on."""
+    ''; whatever goes wrong is that line, the map runs on. `start=False` only says why it would not
+    start one (hold)."""
     # ponytail: a draft PR with new commits (pulse go takes it up) starts no run; the next run does
     try:
         cfg = config.load(root)
@@ -227,22 +292,23 @@ def runner(root: Path, vm: dict, env=os.environ) -> str:
         stopped = (last.get("run") or {}).get("stopped")
         if stopped:
             return f"the last pulse go run was stopped ({stopped}): the map starts none until pulse go runs by hand"
-        ramp = vm["ramp"]
-        work = {i["number"] for i in ramp["next"]} | {r["number"] for r in ramp["rows"]
-                                                      if r["stage"] == "needs a plan" and not r["assignees"]}
+        work = set(waiting(vm))
         held = work & {int(n) for n, r in (last.get("items") or {}).items() if r.get("result") in HELD}
         work -= held
         if not work:
-            return (f"{', '.join(f'#{n}' for n in sorted(held))} wait for you: the last pulse go run did not "
-                    "finish them (pulse show <n>)") if held else ""
+            one = held and len(held) == 1
+            return (f"{', '.join(f'#{n}' for n in sorted(held))} {'waits' if one else 'wait'} for you: the last "
+                    f"pulse go run did not finish {'it' if one else 'them'} (pulse show "
+                    f"{min(held) if one else '<n>'})") if held else ""
         if not cfg["verify"]:
-            return 'pulse go waits for a test command: pulse setup --verify "<the command that runs your tests>"'
+            return NO_VERIFY
         if not trusted(root):
             if subprocess.run(["git", "-C", str(root), "symbolic-ref", "-q", "refs/remotes/origin/HEAD"],
                               capture_output=True, timeout=5).returncode:
                 return "pulse go starts by hand here: git knows no origin/HEAD yet (git remote set-head origin -a)"
-            return ("pulse go starts by hand here: .pulse/config.toml differs from the one on origin's "
-                    "default branch or the base it names, and the map runs no command a checked-out branch brings")
+            return ("pulse go starts by hand here: .pulse/config.toml differs from the one on origin's default "
+                    "branch or the base it names, so the map starts no run by itself with it; g lists the lines and "
+                    "enter runs them")
         stamp, log = state.cache_dir(root) / "go.autostart", config.pulse_dir(root) / "go" / "run.log"
         rep = config.pulse_dir(root) / "go" / "report.json"
         names = ", ".join(f"#{n}" for n in sorted(work))
@@ -256,6 +322,8 @@ def runner(root: Path, vm: dict, env=os.environ) -> str:
             tried = set(json.loads(stamp.read_text(encoding="utf-8") or "{}").get("work") or ())
             if tried == work and not tried & {int(n) for n in last.get("items") or {}}:
                 return f"the last pulse go run started nothing for {names}: the map starts it again when the ramp changes"
+        if not start:
+            return ""          # it would start one now
         stamp.parent.mkdir(parents=True, exist_ok=True)
         stamp.write_text(json.dumps({"work": sorted(work)}), encoding="utf-8")
         # ponytail: a checkout between trusted() and the run's own config read (under a second) still

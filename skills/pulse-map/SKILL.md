@@ -11,7 +11,8 @@ description: >
 
 `pulse map` is the live map in a terminal of its own: it reads the board
 every two seconds beside its keys, so no key waits for GitHub, and its
-last line lists the keys of the level it is on, none with Shift. On the
+last line lists the main keys of the level it is on; no key but `?`
+needs Shift. On the
 map `↑` `↓` (or `j` `k`) pick an item, `Enter` or `→` opens it (on an
 `asks you` line: that chat in VS Code), `m` moves
 a ramp row (arrows, `Enter` places it, and the map stays), `?` shows the
@@ -19,23 +20,33 @@ help, `q` quits. With color, each `#n` is a link to its issue in a
 terminal that knows links (VS Code, iTerm). The item view shows goal,
 stage, holder with phase and last sign of life, blockers, PR, and plan,
 then only what the item's stage allows, each with what it does, picked
-with `↑` `↓` and done with `Enter`: approve spec (or unapprove when it is
-approved and on the ramp), merge (a ready pull request into the base
-branch, after `Enter` confirms; not one with commits after its gates),
+with `↑` `↓` and done with `Enter`; the view opens on a reading entry:
+approve spec (or unapprove when it is
+approved and on the ramp), merge (a ready pull request of this
+repository into the base branch whose last commit passed review and
+audit, after `Enter` confirms; for one with commits after the gates of
+`pulse go` the confirmation says that `Enter` makes it a draft again),
 approve plan, read PR (in the browser), read plan, prioritize (top of
-the ramp, one write), read spec. Both approvals and unapprove show
-what they do first and `Enter` confirms; reading opens a window while the map runs
+the ramp, one write), read spec (where the spec is: on the base, on a
+branch of origin, or here). Both approvals, unapprove, and merge show
+what they do first and `Enter` confirms, but not within a second of
+opening: such an `Enter` confirms nothing, closes the confirmation, and
+the footer says why; reading opens a window while the map runs
 on (`PULSE_EDITOR`, else VS Code or Cursor, else the system's app, else
 the path). A write names itself in the footer while it runs; keys typed
 meanwhile are dropped. `Esc`, `q`,
 `←`, or Backspace go back one level and drop what is not written yet;
-only `q` on the map ends it. `a` does what `pulse approve` does: a spec
-still in its one open spec pull request is merged into the base branch
-first, and the confirmation names that pull request and the specs it
-brings along. `a` refuses what `pulse approve` refuses, and approve spec
-names it in its line: a spec in no such pull request (R1) and, for a
-feature, improvement, or fix, one that breaks R2 to R6; an epic needs R1
-only.
+`q` on the map ends it, and Ctrl-C ends it from any level. `a` does what `pulse approve` does: a spec
+still on its branch of origin is merged into the base branch first,
+without a pull request, and the confirmation names that branch (for a
+spec pull request someone opened, that pull request), the specs it
+brings along, and every other path the merge changes with A, M, or D.
+`a` refuses what `pulse approve` refuses, and approve spec names it in
+its line and offers the merge only where approve makes it: a spec on no
+branch of origin or on several (R1), a branch that changes more than
+`_devprocess/` or does not merge cleanly, and, for a feature,
+improvement, or fix, a spec that breaks R2 to R6; an epic needs R1
+only. Unapprove takes the approval back; a merged spec stays.
 `pulse map --demo` plays a time-lapse of a sample project without a
 repository.
 
@@ -86,12 +97,24 @@ while no run of this clone lives, it starts `pulse go` apart from itself
 and names the items and the log in its footer once. A run ends when the
 ramp is empty; the next approval starts one again, at most once a
 minute. It starts nothing, and names why, for an item the last run did
-not finish (failed, usage limit, stopped, claim refused), after a run a
-person stopped or one that ended before its report (until
-`pulse go` runs by hand), when `.pulse/config.toml` differs from the one
-on origin's default branch or the base it names (a checked-out branch never runs its
-own commands), and without `verify`. `go_autostart = false` turns it
+not finish (failed, usage limit, stopped, claim refused) until a run
+starts by hand or with `g`, after a run a person stopped or one that
+ended before its report (until `pulse go` runs by hand), when
+`.pulse/config.toml` differs from the one on origin's default branch or
+the base it names (the map starts no run by itself with it; `g` lists
+the lines origin's lacks, and `Enter` runs them), and without `verify`.
+The holds after a failed or stopped run come from this clone's last run
+and hold only in this clone: a teammate's map may start the same items. `go_autostart = false` turns it
 off for the project, `PULSE_GO=off` for one shell.
+
+While approved work waits and no run lives, NEXT shows the line
+`pulse go  g start pulse go: #5, #7`, also where the map does not start
+by itself; `pulse status` names `pulse go --detach` there instead. `g`, or `Enter` on that line, shows the items, the agent, the
+test command, and why the map did not start the run; `Enter` starts it
+apart from the map. An `Enter` within a second of `g`, or of the `Enter`
+that opened the confirmation, starts nothing: it closes the confirmation,
+and the footer says why. Without `verify` the line names the command that
+sets it.
 
 ## After an update
 
@@ -102,10 +125,14 @@ footer line with the update commands, and the next session names it.
 
 ## Reading it
 
-- **Lights:** green breathes = working, yellow = waits for you (a question,
-  a permission prompt, or a teammate's pull request asking for your
-  review), red = the last test or build failed, or a pull request's checks
-  fail, grey = idle. Nothing blinks. The worst light rolls up to the
+- **Lights:** green breathes = an agent works (a session on this machine,
+  or a phase of `pulse go`); yellow = something waits for you (an agent's
+  question or permission prompt, a pull request that asks for your review,
+  your pull request that waits for your merge, an item that waits for
+  approval, a plan that waits for you); red = something failed (an agent's
+  last test or build command, a pull request's checks, a draft pull
+  request with a red gate, an item the last `pulse go` run failed); grey =
+  idle. Nothing blinks. The worst light rolls up to the
   feature and the person; the header counts all lights.
 - **Board:** ready to start, in progress (a held draft counts here), in
   review, blocked, not ready yet (a draft nobody holds counts here);
@@ -123,7 +150,8 @@ footer line with the update commands, and the next session names it.
   session holds; without a claim, for the item its branch builds (a Codex
   agent: the branch where its last command ran). An agent outside any
   feature gets a line with its branch. Each teammate gets one line per item they hold,
-  lit from GitHub (needs your review, checks failing, otherwise grey);
+  lit from GitHub (needs your review, checks failing or a draft with a red
+  gate, otherwise grey);
   without a pull request the line says `<phase>, <age> ago` from their
   last sign of life, or `no sign of life for <age>` after 30 minutes. A
   merged item leaves the map at once, even before `pulse status` closes
@@ -134,16 +162,22 @@ footer line with the update commands, and the next session names it.
 - **Next:** one line per kind of thing that waits for a person, the most
   urgent first, with the step that moves it; items that wait for an open
   blocker are left out. For a draft it is `spec in progress` with
-  `<login> writes the spec of #n`. Each chat that asks me gets its own
+  `<login> writes the spec of #n`. What `pulse approve` cannot move yet
+  (several branches, a conflict, code on the branch, no spec, a broken
+  rule) is grey and waits for nobody (`spec waits`, `spec rule`); a
+  row that only waits for a slot says `queued`. A fork's pull request is
+  merged on GitHub; one whose last commit lacks a passing review or
+  audit names the missing runs (`gates missing`). Each chat that asks me gets its own
   `asks you` line with agent, title, and how long it waits, the longest
   first; `Enter` on it, or a click, opens it in VS Code, and `need you`
   in the header links to the longest waiting one. A chat in a terminal,
   the Codex app, Cursor, or VS Code Insiders gets no link and says where
   it runs.
 - **Ramp:** every open item and draft nobody holds, in the team's
-  order, each with what it waits for (not approved, spec or plan rule, plan waits for
-  you, waits for #n with `+n` for more than fit, locked by a file,
-  queued, `spec in progress` for a draft); `last run: <why>`
+  order, each with what it waits for (not approved, spec or plan rule,
+  needs a plan, plan waits for you, waits for #n with `+n` for more than
+  fit, locked by a file, queued, `spec in progress` for a draft); a row
+  the last run failed says `failed:` and why, in red; `last run: <why>`
   follows when a run of `pulse go`, or a session with `pulse release
   <n> --note`, gave the item back. `starts next`
   takes a free slot, the busy ones stand on my row above. The order

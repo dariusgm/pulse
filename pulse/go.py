@@ -168,6 +168,7 @@ class Job:
     pr: int = None             # the draft this job takes up, when it does
     body: str = ""             # that draft's text
     guard: dict = None         # what no phase may change, as it was when the phase started (D-42)
+    before: dict = None        # the worktree when a review or audit started: that session must leave it so
 
     def public(self, **extra):
         return {"number": self.number, "title": self.title, "branch": self.branch,
@@ -189,17 +190,31 @@ def slug(title: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text).strip("-")[:40] or "item"
 
 
-def _branch_of(root: Path, n: int) -> str:
-    """The branch item #n already has, here or pushed from any clone: a new title keeps it (F7.06)."""
-    refs = _git(root, "for-each-ref", "--format=%(refname:lstrip=2)", "refs/heads",
-                "refs/remotes/origin").stdout.split()
-    return next((b for b in (r.removeprefix("origin/") for r in refs) if state.item_of(b) == n), "")
+def _branch_of(root: Path, n: int, base: str, origin_first=False) -> str:
+    """The branch item #n already has, here or pushed from any clone: a new title keeps it (F7.06). A
+    branch named like it that changes nothing but specs against the base, or nothing any more, is a
+    spec branch or a merged one, none to build on (#73). `origin_first`: a pushed branch before one
+    only this clone has, as pulse claim names the start point (#78)."""
+    since = ready._tip(root, f"refs/remotes/origin/{base}") or ready._tip(root, f"refs/heads/{base}")
+    refs = ready._git(root, "for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes/origin").split()
+    if origin_first:
+        refs.sort(key=lambda r: not r.startswith("refs/remotes/"))
+    for ref in refs:
+        b = ref.removeprefix("refs/heads/").removeprefix("refs/remotes/origin/")
+        if state.item_of(b) != n:
+            continue
+        if not since:          # no base to compare with: the first branch named like it
+            return b
+        changed = ready._git(root, "diff", "--name-only", "-z", f"{since}...{ref}").split("\0")   # a name in no UTF-8 too
+        if any(c and not c.startswith("_devprocess/requirements/") for c in changed):
+            return b
+    return ""
 
 
 def job_for(root: Path, item: dict, base_branch: str) -> Job:
     n = item["number"]
     kind = item["type"] if item["type"] in state.WORK else "feat"
-    branch = _branch_of(root, n) or f"{kind}/{n}-{slug(item['title'])}"
+    branch = _branch_of(root, n, base_branch) or f"{kind}/{n}-{slug(item['title'])}"
     return Job(n, item["title"], branch, item.get("base") or base_branch, "",
                root.parent / f"{root.name}-{branch.split('/', 1)[1]}",
                stacked_on=item.get("stacked_on"), blockers=item.get("blocked_by") or [])
@@ -208,7 +223,12 @@ def job_for(root: Path, item: dict, base_branch: str) -> Job:
 def _start(root: Path, cfg: dict, template: str, job: Job, plans: dict, specs: dict, logs: Path,
            phase: str = "build") -> str:
     ready.net_git(root, "fetch", "-q", "--prune", "origin")     # what landed since, and this branch from any clone
-    job.start = config.base_ref(root, job.base)
+    # a stack base (a blocker's branch, for a build or a draft taken up) is a branch of origin, never a
+    # name git could read as a local branch, a tag, or a commit (#63)
+    stacked = job.base != (cfg.get("base_branch") or config.default_branch(root))
+    job.start = f"refs/remotes/origin/{job.base}" if stacked else config.base_ref(root, job.base)
+    if stacked and not ready._tip(root, job.start):
+        return f"its stack base {ready.printable(job.base)} is not on origin"
     pushed = f"origin/{job.branch}"
     if not job.worktree.exists():
         exists, on_origin = (_git(root, "rev-parse", "--verify", "-q", ref).returncode == 0
@@ -232,8 +252,9 @@ def _start(root: Path, cfg: dict, template: str, job: Job, plans: dict, specs: d
     if phase == "plan":
         prompt = _plan_prompt(job)
     else:
-        prompt = PROMPT.format(n=job.number, title=job.title, branch=job.branch, skill=BUILD_SKILL,
-                               stack=f" (stacked on #{job.stacked_on}, branch {job.base})" if job.stacked_on else "",
+        prompt = PROMPT.format(n=job.number, title=job.title, branch=ready.printable(job.branch), skill=BUILD_SKILL,
+                               stack=f" (stacked on #{job.stacked_on}, branch {ready.printable(job.base)})"
+                               if job.stacked_on else "",
                                plan=job.plan, spec=job.spec or "see the issue")
     _launch(job, config.agent_argv(_allowing(template, cfg, job), prompt), logs, phase)
     return ""
@@ -447,17 +468,59 @@ def _red_seen(job: Job, cfg: dict, logs: Path) -> bool:
     return _gates(job, cfg, logs)
 
 
+def _gate(job: Job) -> Path:
+    """Where the review and the audit of pulse go run: the gate directory beside the worktree, out of
+    reach of a builder's sandbox. It is an empty git repository, since codex exec starts only inside
+    one, and holds session/, the session's cwd: a fresh checkout of the worktree's HEAD, which _advance
+    pushed, in tree/, and the report next to it, outside the checkout. Nothing uncommitted or ignored
+    of the worktree gets there, and the branch's .claude/ and AGENTS.md are no project of the session
+    (FR-01, FR-02)."""
+    return job.worktree.with_name(job.worktree.name + ".gate")
+
+
+def _clear_gate(job: Job) -> None:
+    """The gate directory goes, a link or file in its place too, then its checkout's entry in the git
+    dir: before a gate session starts and once its verdict is read, after a timeout, an error, a hold,
+    or a stop too. Raises nothing; what stays makes the next gate's mkdir fail, so no session starts
+    on it."""
+    gate = _gate(job)
+    if gate.is_dir() and not gate.is_symlink():
+        shutil.rmtree(gate, ignore_errors=True)
+    else:
+        try:
+            gate.unlink()
+        except OSError:
+            pass
+    tree = gate / "session" / "tree"
+    if not os.path.lexists(tree):                 # never through a link: git removes what it points at
+        _git(job.worktree, "worktree", "remove", "-f", "-f", str(tree))
+
+
 def _session(job: Job, cfg: dict, logs: Path, kind: str) -> bool:
-    """A fresh session that did not build the feature: the review, then the security audit. True when
-    none starts: an audit whose scan failed gives no verdict, so its gate says why instead (N3.11)."""
-    b = review.brief(job.worktree, job.number, job.title, job.spec, job.start, tests=job.results.get("tests")) \
-        if kind == "review" else review.audit_brief(job.worktree, job.number, job.title, job.start)
+    """A fresh session that did not build the feature: the review, then the security audit, each in the
+    gate directory. True when none starts: an audit whose scan failed gives no verdict, so its gate
+    says why instead (N3.11)."""
+    gate = _gate(job)
+    _clear_gate(job)
+    gate.mkdir()
+    _git(gate, "init", "-q", check=True)
+    here = gate / "session"
+    here.mkdir()
+    tree, report = here / "tree", here / review.REPORTS[kind]
+    _git(job.worktree, "worktree", "add", "--detach", str(tree), "HEAD", check=True)
+    b = review.brief(tree, job.number, job.title, job.spec, job.start, tests=job.results.get("tests"),
+                     report=report) if kind == "review" else \
+        review.audit_brief(tree, job.number, job.title, job.start, report=report)
     if b.get("unscanned"):     # as review.run reads it
-        rec = review.record(job.worktree, job.number, kind, failed=f"did not start: {b['unscanned']}")
+        try:
+            rec = review.record(tree, job.number, kind, failed=f"did not start: {b['unscanned']}", report=report)
+        finally:
+            _clear_gate(job)
         job.results[kind], job.reports[kind] = "none", rec["why"]
         return True
-    _launch(job, config.agent_argv(review.template(cfg, cfg["review_agent"] or job.agent), b["prompt"]),
-            logs, kind)
+    job.before = review._snapshot(job.worktree)
+    _launch(job, config.agent_argv(review.gate_template(cfg, cfg["review_agent"] or job.agent), b["prompt"]),
+            logs, kind, cwd=here)
     return False
 
 
@@ -524,8 +587,14 @@ def _advance(root: Path, repo: str, cfg: dict, job: Job, gh_run, rep: dict, logs
             return False
         return _finish(root, repo, job, gh_run, rep, who, cfg)
     kind = job.phase                   # review or audit
-    rec = review.record(job.worktree, job.number, kind,     # a session that failed or was stopped judges nothing
-                        failed=job.why or (f"ended with exit {job.rc}" if job.rc else ""))
+    here = _gate(job) / "session"
+    try:                               # a session that failed, was stopped, or changed the worktree judges nothing
+        now = review._snapshot(job.worktree)
+        failed = job.why or (f"ended with exit {job.rc}" if job.rc else "") or \
+            ("" if now and now == job.before else "changed the branch (HEAD or the working tree of its worktree)")
+        rec = review.record(here / "tree", job.number, kind, failed=failed, report=here / review.REPORTS[kind])
+    finally:
+        _clear_gate(job)
     job.results[kind] = rec["verdict"] or "none"
     job.reports[kind] = rec["report"] if rec["verdict"] else f"{rec['why']}\n\n{rec.get('report', '')}".strip()
     if rec["verdict"] == "block" and _fix(job, cfg, logs, kind, job.reports[kind]):
@@ -774,7 +843,19 @@ def _finish(root: Path, repo: str, job: Job, gh_run, rep: dict, who: dict, cfg: 
 
 def _pushed(root: Path, repo: str, job: Job, gh_run, rep: dict, who: dict) -> bool:
     """The item branch to origin, a fast-forward only, so the next holder builds on the work (WP-51).
-    A rejected push stops the item: the report says why, and the claim goes back."""
+    A rejected push stops the item: the report says why, and the claim goes back. A run that lost
+    its item pushes nothing, opens no PR, and leaves the item to its holder (#77)."""
+    v = state._view(repo, job.number, gh_run)
+    held, by = state._lead(v, who)
+    if not held:
+        why = f"lost #{job.number} to {by or 'nobody, its claim mark is gone'}: nothing is pushed, the work stays " \
+              "in the worktree"
+        try:                   # on the read that found the loss: a second could miss the holder's assignee
+            state._give_way(repo, job.number, state._marks(v), who, gh_run)
+        except state.StateError as e:
+            why += f"; its claim could not be taken back ({e}): pulse release --take {job.number}"
+        _event(rep, "failed", job.public(why=why, log=_log_path(job)))
+        return False
     push = ready.net_git(job.worktree, "push", "-q", "origin", job.branch)
     if push.returncode:
         why = f"push failed: {push.stderr.strip()}"
@@ -807,6 +888,7 @@ def _hold(root: Path, repo: str, job: Job, gh_run, rep: dict, logs: Path, change
     and a person looks first (D-42). The item keeps a note as after a hand-back (D-43)."""
     if job.phase == "spec tests":
         _git(root, "worktree", "remove", "--force", str(_scratch(logs, job.number)))
+    _clear_gate(job)
     why = (f"the {job.phase} phase changed {', '.join(os.path.relpath(p, root.parent) for p in changed)}: "
            f"nothing is pushed and the claim stays until a person has looked (D-42)")
     _group(logs, job.number, None, held=True)       # a start after a hard stop keeps the claim too
@@ -1075,9 +1157,10 @@ def _release(root: Path, repo: str, n: int, gh_run, who: dict, note: str = "") -
 
 def _handover(job: Job, why: str) -> str:
     """The note an item keeps when pulse go gives it back after a failure, a limit, or a stop: the
-    phase, why, and the branch whoever goes on builds on (D-43). Its first line is what the map shows."""
-    return (f"{job.phase}: {why.removeprefix(job.phase + ': ')}\n"
-            f"Its branch {job.branch} carries the work pushed so far.")
+    phase, why, and the branch whoever goes on builds on (D-43). Its first line is what the map shows.
+    Branch names and git's words about them go printable, line by line (#63)."""
+    lines = f"{job.phase}: {why.removeprefix(job.phase + ': ')}".split("\n")
+    return "\n".join(map(ready.printable, lines + [f"Its branch {job.branch} carries the work pushed so far."]))
 
 
 def _say(job: Job, line: str) -> None:
@@ -1230,7 +1313,8 @@ def run(root: Path, cap=None, agent=None, dry_run=False, gh_run=state.gh, poll=5
             specs = {i["number"]: i.get("spec") for i in items}
             unplanned = [i for i in dispatch.order(items) if gates.get(i["number"]) == "needs a plan"]
             drafts = [i for i in items if (i.get("pr") or {}).get("draft") and login in i["assignees"]
-                      and _branch_of(root, i["number"]) == i["pr"]["branch"]]
+                      and not i["pr"].get("fork")       # a fork's draft is none of pulse go's (#63)
+                      and _branch_of(root, i["number"], base_branch) == i["pr"]["branch"]]
             for i in items:            # a PLAN that fails P1 to P5 waits for a person: say so once a run
                 if gates.get(i["number"], "").startswith("plan: ") and ("plan", i["number"]) not in tried:
                     tried.add(("plan", i["number"]))
@@ -1306,6 +1390,7 @@ def run(root: Path, cap=None, agent=None, dry_run=False, gh_run=state.gh, poll=5
                     try:
                         finished = _advance(root, repo, cfg, job, gh_run, rep, common / "go", who, spent)
                     except Exception as e:      # one item's failure must not stop the others; Ctrl-C and SIGTERM do
+                        _clear_gate(job)
                         why = (f"{_trouble(job, e, common / 'go')} (the claim stays and holds a slot, so no run "
                                f"retries it before you looked; pulse release --take {job.number})")
                         _event(rep, "failed", job.public(why=why, log=_log_path(job, common / "go")))
@@ -1345,6 +1430,7 @@ def run(root: Path, cap=None, agent=None, dry_run=False, gh_run=state.gh, poll=5
                 _stop(job.proc)
             if job.phase == "spec tests":
                 _git(root, "worktree", "remove", "--force", str(_scratch(common / "go", job.number)))
+            _clear_gate(job)
             _event(rep, "stopped", job.public(phase=job.phase, log=_log_path(job, common / "go"),
                                               why=_release(root, repo, job.number, gh_run, who,
                                                            _handover(job, stop)).strip(" ()")
@@ -1380,20 +1466,27 @@ def _order(items: list) -> list:
 
 def integrate(root: Path, items: list) -> dict:
     """The items' open branches merged in dependency order in a scratch worktree, and verify run
-    there: a clash between parallel work shows before anyone merges."""
+    there: a clash between parallel work shows before anyone merges. A fork's branch never comes in;
+    each other one is fetched on its own, and one origin does not give is named, not merged (#63)."""
     cfg = config.load(root)
     base = cfg["base_branch"] or config.default_branch(root)
     scratch = config.pulse_dir(root) / "integrate"
-    order = _order(items)
+    order = [i for i in _order(items) if not i["pr"].get("fork")]
     _git(root, "worktree", "remove", "--force", str(scratch))
-    ready.net_git(root, "fetch", "-q", "origin", base, *[i["pr"]["branch"] for i in order])
+    got = {b for b in [base] + [i["pr"]["branch"] for i in order]      # each on its own; after --, never an option
+           if ready.net_git(root, "fetch", "-q", "origin", "--",
+                            f"+refs/heads/{b}:refs/remotes/origin/{b}").returncode == 0}
     _git(root, "worktree", "add", "--detach", str(scratch), f"origin/{base}", check=True)
-    rep = {"base": base, "merged": [], "conflict": None, "verify": None}
+    rep = {"base": base, "merged": [], "conflict": None, "verify": None, "unfetched": []}
     try:
         for i in order:
             br = i["pr"]["branch"]
+            tip = ready._tip(root, f"refs/remotes/origin/{br}") if br in got else ""
+            if not tip:        # a stale copy proves nothing, and the branches after it still count
+                rep["unfetched"].append(br)
+                continue
             m = _git(scratch, "-c", "user.name=pulse", "-c", "user.email=pulse@localhost",
-                     "merge", "--no-ff", "--no-edit", f"origin/{br}")
+                     "merge", "--no-ff", "--no-edit", tip)
             if m.returncode:
                 _git(scratch, "merge", "--abort")
                 rep["conflict"] = {"branch": br, "after": list(rep["merged"])}

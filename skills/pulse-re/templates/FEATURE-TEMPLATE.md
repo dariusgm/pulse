@@ -99,5 +99,5 @@ Populated rows only, every target with a number. Omit the section if nothing is 
 - [ ] All user stories implemented and success criteria verified
 - [ ] Every FR has a green test named after its id
 - [ ] Activation Path trigger or symbol exists in code
-- [ ] Issue closed by the merging PR
+- [ ] Item closed by the merged pull request
 - [ ] Navigation (SYSTEM-MAP or path-local AGENTS.md) updated if a new entry point landed

@@ -2,7 +2,7 @@
 title: {Title}
 date: YYYY-MM-DD
 target-type: project | epic | feature
-issue: {N, once the item has a GitHub issue}
+issue: {N, the number of its draft or of the item it adopted; a Project-BA has none}
 project-ba-ref: {path to BA-PROJECT.md, or omit for Project-BA itself}
 scope: simple-test | poc | mvp
 validity: Draft

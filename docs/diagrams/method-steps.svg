@@ -1,5 +1,5 @@
 <svg class="pd" viewBox="0 0 1000 384" role="img" aria-labelledby="ms-title">
-  <title id="ms-title">The method in nine steps. /pulse-ba: why, and for whom, you approve. /pulse-re: what, epics and features, you approve each. Planning: how, tasks and files, pulse go plans. /pulse-build: spec tests first, one branch per feature; it loops back to planning on a bug, a design, or a requirement question, and to /pulse-re on a gap. Then three gates: tests verify, review in a fresh session, /pulse-audit in a fresh session; a red gate gets a fix round, then the gates run again from the tests. Then one pull request per feature, and you merge it into develop.</title>
+  <title id="ms-title">The method in nine steps. /pulse-ba: why, and for whom, you approve. /pulse-re: what, epics and features, you approve each. Planning: how, tasks and files; /pulse-re, /pulse-build, or pulse go plans. /pulse-build: spec tests first, one branch per feature; it loops back to planning on a bug, a design, or a requirement question, and to /pulse-re on a gap. Then three gates: tests verify, review in a fresh session, /pulse-audit in a fresh session; a red gate gets a fix round, then the gates run again from the tests. Then one pull request per feature, and you merge it into develop.</title>
   <defs>
     <marker id="ms-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="pd-head" d="M0 0L10 5L0 10z"/></marker>
   </defs>
@@ -20,9 +20,10 @@
   <text class="pd-you-t" x="373" y="156" text-anchor="middle">you approve each</text>
   <path class="pd-edge" d="M473 128H525" marker-end="url(#ms-head)"/>
   <rect class="pd-node" x="527" y="86" width="200" height="84" rx="12"/>
-  <text class="pd-h" x="627" y="116" text-anchor="middle">planning</text>
-  <text x="627" y="138" text-anchor="middle">how: tasks, files</text>
-  <text x="627" y="156" text-anchor="middle"><tspan class="pd-mono">pulse go</tspan> plans</text>
+  <text class="pd-h" x="627" y="108" text-anchor="middle">planning</text>
+  <text x="627" y="126" text-anchor="middle">how: tasks, files</text>
+  <text x="627" y="143" text-anchor="middle"><tspan class="pd-mono">/pulse-re</tspan>, <tspan class="pd-mono">/pulse-build</tspan>,</text>
+  <text x="627" y="160" text-anchor="middle">or <tspan class="pd-mono">pulse go</tspan> plans</text>
   <path class="pd-edge" d="M727 128H778" marker-end="url(#ms-head)"/>
   <rect class="pd-node" x="780" y="86" width="200" height="84" rx="12"/>
   <text class="pd-cmd" x="880" y="116" text-anchor="middle">/pulse-build</text>

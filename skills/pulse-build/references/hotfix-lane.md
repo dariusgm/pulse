@@ -11,11 +11,12 @@ When allowed:
    sent here is claimed and on its branch already. Otherwise register a
    draft: `pulse new fix "<symptom>" --parent <feature> --draft` prints
    the number and holds the item for this session; branch
-   `fix/<n>-<slug>` from the base branch. Either way,
+   `fix/<n>-<slug>` from `origin/<base>` after `git fetch origin`. Either way,
    `pulse claim <n> --files <path>...` adds the files the fix touches to
    this session's claim, so every ramp keeps other work off them.
 2. Fix it test-first; the regression-test cycle still runs and the
-   15 minutes include it.
+   15 minutes include it. Push the fix branch after every commit
+   (`git push -u origin fix/<n>-<slug>`).
 3. Record it. An item from `/pulse-build` has its spec: note the date in
    its "Regression test" section. A draft gets its spec now: write
    `_devprocess/requirements/fixes/{slug}.md` from
@@ -26,7 +27,8 @@ When allowed:
    A draft then gets its spec attached:
    `pulse new fix "<symptom>" --parent <feature> --spec <path> --issue <n>`;
    it ends the draft and gives the claim back. Commit what it wrote and
-   push again. Open the PR; it closes the item.
+   push again. Then run the gates as in Done of `/pulse-build` (tests,
+   review, audit) and open the PR as it says there; it closes the item.
 4. Tell the user: files touched, item number, PR.
 
 The safety nets that keep the lane honest:

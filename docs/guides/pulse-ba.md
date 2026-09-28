@@ -209,7 +209,7 @@ archives, not in the active Project-BA.
 
 ## Handoff
 
-The skill commits the BA on its docs branch (`docs(ba): <title>`, with `Refs: #<n>` for its draft, a Project-BA's included) and asks you to approve it, the first gate of the Pulse flow. A correction goes into the BA, and the question comes again. Once you approve, the BA gets `validity: Validated`, and the skill pushes the docs branch so the team can read it. Then [`/pulse-re`](./pulse-re) starts in the same session, on the same branch, with the draft number. RE turns the HMW into the epic hypothesis, the critical hypotheses into feature validation, needs and jobs to be done into user stories, and the idea potential into priorities, and attaches each spec to its draft once the spec is pushed. State never goes into the BA file; the item's record carries it.
+The skill commits the BA on its docs branch (`docs(ba): <title>`, with `Refs: #<n>` for its draft, a Project-BA's included) and pushes the branch, as after every commit from the first one, so the team sees the BA while it is written. Then it asks you to approve it, the first stop of the Pulse flow. A correction goes into the BA, and the question comes again. Once you approve, the BA gets `validity: Validated`, committed and pushed. Then [`/pulse-re`](./pulse-re) starts in the same session, on the same branch, with the draft number. RE turns the HMW into the epic hypothesis, the critical hypotheses into the epic's leading indicators, needs and jobs to be done into user stories, and the idea potential into priorities, and attaches each spec to its draft once the spec is pushed. State never goes into the BA file; the item's record carries it.
 
 ## Phase 6: Post-Release Review (BA as living document)
 

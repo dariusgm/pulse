@@ -41,7 +41,6 @@ ITEM_ID = r"[A-Z][A-Z0-9]*(?:-[A-Za-z0-9]+)+"              # any row id: FIX-SEC
 OWN_FILE = r"(?:ADR|PLAN)-\d+(?:-\d+)*|EPIC-\d+"           # rows whose content lives in their own file
 LEGACY_LINE = "Legacy DIA id: "                           # the body line that marks an issue this migration made
 CLAIM = re.compile(rf"^{LEGACY_LINE}(\S+)\s*$", re.M)
-WRITE = ("admin", "maintain", "write")                    # a claim counts only from the gh user or these authors
 STATE_KEYS = ("status", "phase", "claim", "last-change")
 DIA_HOOKS = ("pre-commit", "pre-merge-commit")
 
@@ -243,10 +242,8 @@ def _title_id(title: str) -> str | None:
 
 def _trusted(repo: str, login: str, me: str, run) -> bool:
     """The gh user, or someone with write access to the records repository; no answer means no."""
-    if not login or login == me:
-        return bool(login)
     try:
-        return run(["api", f"repos/{repo}/collaborators/{login}/permission", "--jq", ".permission"]).strip() in WRITE
+        return bool(login) and (login == me or state.can_push(repo, login, run))
     except state.StateError:
         return False
 

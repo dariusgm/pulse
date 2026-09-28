@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 912" role="img" aria-labelledby="vm-title vm-desc" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',sans-serif">
   <title id="vm-title">The Pulse workflow and how pairs of a person and their agents share the work</title>
-  <desc id="vm-desc">Top: the workflow as a line of ten steps, each with who works and what it leaves behind. Business analysis (/pulse-ba), you and an agent: Project-BA and Item-BA. Requirements (/pulse-re), you and an agent: feature specs and the architect handoff. Plan (/pulse-plan), an agent: the PLAN and decision records. Build (/pulse-build), an agent: spec tests, code, unit tests. Tests (verify), run by pulse: a test result per commit. Review (/pulse-review) and audit (/pulse-audit), agents in fresh sessions: a review report and an audit report, pass or block. Pull request, opened by pulse: the pull request with its gate table and Closes #n. Merge, you: the feature on the base branch, the item closed. Release, you: a versioned release. You decide at business analysis, requirements, the merge, and at the plan only when it is held. Plan to pull request run under pulse go for each approved feature in parallel. A red gate goes back to the build and all gates run again; a requirement gap goes back from plan to requirements, a design gap from build to plan; release outcomes go back to business analysis. Bottom: the map that everyone sees. 1: pulse go claims the front item of the ramp, which the team orders and approves. 2: each person works with their own agents, one worktree and branch per item, and runs plan to pull request. 3: a pair hands back a pull request with the gate reports; you merge it. 4: the merge closes the item and waiting work moves up the ramp; a failed build returns its item to the ramp. The board on GitHub stores the state behind the map; only pulse writes it, and every map reads it.</desc>
+  <desc id="vm-desc">Top: the workflow as a line of ten steps, each with who works and what it leaves behind. Business analysis (/pulse-ba), you and an agent: Project-BA and Item-BA. Requirements (/pulse-re), you and an agent: feature specs and the architect handoff. Plan (the pulse-plan skill, inside /pulse-re, /pulse-build, and pulse go), an agent: the PLAN and decision records. Build (/pulse-build), an agent: spec tests, code, unit tests. Tests (verify), run by pulse: a test result per commit. Review (the pulse-review skill) and audit (/pulse-audit), agents in fresh sessions: a review report and an audit report, pass or block. Pull request, opened by pulse: the pull request with its gate table and Closes #n. Merge, you: the feature on the base branch, the item closed. Release, you: a versioned release. You decide at business analysis, requirements, the merge, and at the plan only when it is held. Plan to pull request run under pulse go for each approved feature in parallel. A red gate goes back to the build and all gates run again; a requirement gap goes back from plan to requirements, a design gap from build to plan; release outcomes go back to business analysis. Bottom: the map that everyone sees. 1: pulse go claims the front item of the ramp, which the team orders and approves. 2: each person works with their own agents, one worktree and branch per item, and runs plan to pull request. 3: a pair hands back a pull request with the gate reports; you merge it. 4: the merge closes the item and waiting work moves up the ramp; a failed build returns its item to the ramp. The board on GitHub stores the state behind the map; only pulse writes it, and every map reads it.</desc>
   <style>
     .h { font-size: 20px; font-weight: 700; fill: #172033; }
     .sub { font-size: 13.5px; fill: #475569; }
@@ -94,7 +94,7 @@
   <rect x="257" y="129" width="106" height="106" rx="14" class="stop" stroke-dasharray="7 5"/>
   <use href="#i-robot" x="299" y="144" width="22" height="22" fill="#ffffff"/>
   <text x="310" y="190" class="n" text-anchor="middle">Plan</text>
-  <text x="310" y="218" class="c" text-anchor="middle">/pulse-plan</text>
+  <text x="310" y="218" class="c" text-anchor="middle">pulse-plan</text>
   <path d="M 362 182 H 373" class="step"/>
   <path d="M 310 237 V 247" stroke="#7e22ce" stroke-width="2"/>
   <path d="M 260 248 H 346 L 360 262 V 326 H 260 Z" fill="#ffffff" stroke="#7e22ce" stroke-width="1.5"/>
@@ -132,7 +132,7 @@
   <rect x="608" y="132" width="100" height="100" rx="12" fill="#4338ca"/>
   <use href="#i-robot" x="647" y="144" width="22" height="22" fill="#ffffff"/>
   <text x="658" y="190" class="n" text-anchor="middle">Review</text>
-  <text x="658" y="218" class="c" text-anchor="middle">/pulse-review</text>
+  <text x="658" y="218" class="c" text-anchor="middle">pulse-review</text>
   <path d="M 710 182 H 721" class="step"/>
   <path d="M 658 234 V 247" stroke="#4338ca" stroke-width="2"/>
   <path d="M 608 248 H 694 L 708 262 V 326 H 608 Z" fill="#ffffff" stroke="#4338ca" stroke-width="1.5"/>

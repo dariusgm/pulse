@@ -31,6 +31,9 @@ silently:
    once the user agrees.
 4. PLAN change log: `trigger=bug #<new>: <one line>`.
 5. Fix it test-first. Commit names both items: `Refs: #<current>, #<new>`.
+   The pull request names both with `Closes`; where it goes into another
+   base than the default branch, `pulse done <new>` closes the fix record
+   after the merge.
 
 ## 2. Design discovery (trigger=design)
 

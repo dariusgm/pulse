@@ -164,17 +164,20 @@ ramp keeps other items off those files without a fetch. If it answers
 `<file> is in use by #m`, the claim stays without them and the item
 waits for #m: commit and push the PLAN as below, then, unless `pulse go`
 holds the item, give it back with `pulse release <n> --note "waits for
-#m: <file>"` and build nothing. Commit the PLAN
-alone as `docs(plan): #<n>` on the item's branch (`<type>/<n>-<slug>`)
-and push it: the ramp and every teammate see it there, and the build
+#m: <file>"` and build nothing. If it answers that the item is blocked
+(its build waits for a blocker), push the PLAN the same way and give the
+item back with `pulse release <n>`: planning does not wait, the build does.
+Commit the PLAN
+alone as `docs(plan): #<n>` on the item's branch (`<type>/<n>-<slug>`,
+from the start point `pulse claim` names) and push it: the ramp and every teammate see it there, and the build
 continues on that branch. `pulse go` plans approved items with a ready
 spec by itself, in ramp order, as the first phase of their job.
 
 With `plan_approval = "auto"` (the default) a PLAN that passes P1 to P5 is
-approved at once, unless something holds it: a risk flag in the spec
-(`risk:`) or an entry under `needs:`. With `manual`, or when something
-holds it, the ramp shows "plan waits for you" until a person approves it
-(`pulse approve-plan <n>`, or the action in the ramp).
+approved at once, unless something holds it: a risk flag (`risk:`) or
+`effort: L` in the spec, or an entry under `needs:`. With `manual`, or
+when something holds it, the ramp shows "plan waits for you" until a
+person approves it (`pulse approve-plan <n>`, or the action in the ramp).
 
 ## 3. Decision records: only with a read-when
 
@@ -223,18 +226,19 @@ project's AGENTS.md or a path-local AGENTS.md, not in `_devprocess/`.
 
 ## 5. Handoff
 
-Commit the PLAN (`docs(plan): <title>`, `Refs: #<n>`) and any records,
-push the branch, then give the claim back: `pulse release <n>`. Keep it
-only when this session goes on to build the item (`/pulse-build <n>`).
+Commit the PLAN alone as `docs(plan): #<n>`, then any records in a
+commit of their own (`Refs: #<n>`), and push the branch. Then give the
+claim back with `pulse release <n>`, unless `pulse go` holds the item or
+this session goes on to build it (`/pulse-build <n>`).
 Set new blockers with `pulse block <n> --by <m>` or
 `pulse new ... --blocked-by`.
 
 An approved item goes straight on, unless its PLAN waits for a person
-(a risk flag, `needs:`, or `plan_approval = "manual"`): then show the
-user the goal, the decisions, the risks, and the files, and wait for
-`pulse approve-plan <n>`. Otherwise `/pulse-build <n>` in this session,
-or `pulse go` when several are ready; `pulse go` builds in ramp order
-without asking. An item that is not approved yet waits for the person
-who approves its spec. When the plan reveals an order the team should
-know, name it: `pulse status` shows the current one, and `pulse rank`
-moves an item.
+(a risk flag or effort L in the spec, `needs:`, or
+`plan_approval = "manual"`): then show the user the goal, the decisions,
+the risks, and the files, and wait for `pulse approve-plan <n>`.
+Otherwise `/pulse-build <n>` in this session, or `pulse go` when several
+are ready; `pulse go` builds in ramp order without asking. An item that
+is not approved yet waits for the person who approves its spec. When the
+plan reveals an order the team should know, name it: `pulse status`
+shows the current one, and `pulse rank` moves an item.

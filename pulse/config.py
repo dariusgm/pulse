@@ -48,9 +48,15 @@ def _unescape(s: str) -> str:
         return s
 
 
+def printable(text: str) -> str:
+    """Text from a branch or a PR, fit for a terminal: every character that is not printable becomes "?"
+    (audit L-1 of #69). Here, where every module that prints such text can reach it (#56)."""
+    return "".join(c if c.isprintable() else "?" for c in text)
+
+
 @functools.lru_cache(maxsize=None)          # each warning once, however often a command reads the config
 def _warn(msg: str) -> None:
-    print(f"pulse: {msg}", file=sys.stderr)
+    print(f"pulse: {printable(msg)}", file=sys.stderr)     # a line of a checked-out branch's config (#56)
 
 
 def _parse(text: str, path: Path = None) -> dict:

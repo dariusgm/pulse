@@ -54,27 +54,48 @@ def on_base(root: Path, path: str, ref: str = None):
 
 
 _found: dict = {}          # the item view asks every 2 s (#68): git again only once a branch moved
+_carried: dict = {}        # (root, path) -> (tips, branches): the map asks for every spec not on the base (#88)
+
+
+def origin_tips(root: Path) -> str:
+    """Every branch of origin with its tip commit, newest first, a line each: what carriers() reads."""
+    return _git_out(root, "for-each-ref", "--sort=-committerdate", "--format=%(objectname) %(refname)",
+                    "refs/remotes/origin")
+
+
+def carriers(root: Path, path: str, tips: str = None) -> list:
+    """The branches of origin whose tip has path as a file, newest first, named without origin/ and never
+    origin/HEAD (#68, #88). One batch asks every branch by its full name, blobs only, so no tag named like
+    a branch answers for it, and the answer holds until a branch moves. tips: origin_tips(), read once by
+    a caller that asks for several paths."""
+    tips = origin_tips(root) if tips is None else tips
+    key = (str(root), path)
+    if _carried.get(key, (None,))[0] != tips:
+        refs = [r for r in (line.partition(" ")[2] for line in tips.split("\n"))
+                if r.startswith("refs/remotes/origin/") and r != "refs/remotes/origin/HEAD"]
+        # one question a line; text mode ends a line at \r too, so a path with either asks nothing
+        have = [] if "\n" in path or "\r" in path else subprocess.run(
+            ["git", "-C", str(root), "cat-file", "--batch-check"], capture_output=True, text=True,
+            encoding="utf-8", errors="replace", input="".join(f"{r}:{path}\n" for r in refs)).stdout.split("\n")
+        if len(_carried) > 1024:
+            _carried.clear()
+        _carried[key] = (tips, [r[len("refs/remotes/origin/"):] for r, line in zip(refs, have) if BLOB.match(line)])
+    return _carried[key][1]
 
 
 def find(root: Path, path: str) -> tuple:
     """(text, ref) of a spec as the base branch has it, else as the branch of origin with the newest tip
-    that has it (#68), else (None, None). One batch asks every branch, blobs only, and the answer holds
-    until a branch moves. The newest tip may hold an older version than another branch."""
+    that has it (#68, carriers()), else (None, None). The answer holds until a branch moves. The newest
+    tip may hold an older version than another branch."""
     base = config.base_ref(root)
-    tips = _git_out(root, "for-each-ref", "--sort=-committerdate", "--format=%(objectname) %(refname)",
-                    "refs/remotes/origin", "refs/heads")
+    tips = _git_out(root, "for-each-ref", "--format=%(objectname) %(refname)", "refs/remotes/origin", "refs/heads")
     key = (str(root), path, base, tips)
     if key not in _found:
         text, ref = on_base(root, path, base), base
         if text is None:
-            refs = [r[len("refs/remotes/"):] for r in (line.partition(" ")[2] for line in tips.split("\n"))
-                    if r.startswith("refs/remotes/origin/") and r != "refs/remotes/origin/HEAD"]
-            # one question a line; text mode ends a line at \r too, so a path with either asks nothing
-            have = [] if "\n" in path or "\r" in path else subprocess.run(
-                ["git", "-C", str(root), "cat-file", "--batch-check"], capture_output=True, text=True,
-                encoding="utf-8", errors="replace", input="".join(f"{r}:{path}\n" for r in refs)).stdout.split("\n")
-            ref = next((r for r, line in zip(refs, have) if BLOB.match(line)), None)
-            text = on_base(root, path, ref) if ref else None
+            branch = next(iter(carriers(root, path)), None)
+            text, ref = (on_base(root, path, f"refs/remotes/origin/{branch}"), f"origin/{branch}") if branch \
+                else (None, None)
         if len(_found) > 64:
             _found.clear()
         _found[key] = (text, ref if text is not None else None)
@@ -296,27 +317,40 @@ def registered(root: Path) -> dict:
     return out
 
 
-def _git_out(root: Path, *args) -> str:
+def _git_out(root: Path, *args, check=False) -> str:
+    """git's output, "" when it fails; `check`: CalledProcessError instead, where "" would read as nothing."""
     out = subprocess.run(["git", "-C", str(root), "-c", "core.quotePath=false", *args],
-                         capture_output=True, text=True, encoding="utf-8", errors="replace")
+                         capture_output=True, text=True, encoding="utf-8", errors="replace", check=check)
     return out.stdout if out.returncode == 0 else ""
 
 
-def _taken(root: Path) -> set:
+def _taken(root: Path, revs=()) -> set:
     """(kind, numbers) of every ID a spec's file name has had: in the history of every ref, branches
-    of other clones as far as the last fetch brought them, and in the working tree of every worktree.
+    of other clones as far as the last fetch brought them, and of revs, commits that count as a ref
+    (#85), and in the working tree of every worktree.
     With ids_since in the config, a project numbers anew from that commit: only what came after it,
-    on refs and in worktrees that have it, counts."""
+    on refs, revs, and in worktrees that have it, counts. A history git cannot read (a fetch cut short
+    left a commit without its tree or parent) raises CalledProcessError: no history is no ID (#85)."""
     since = config.load(root).get("ids_since")
     if since and not _git_out(root, "rev-parse", "--verify", "-q", f"{since}^{{commit}}"):
         config._warn(f"ids_since {since} is no commit here, so all history counts")
         since = None
+
+    def has(c):                # since is in the history of c; 1 means no, more means git cannot read it
+        got = subprocess.run(["git", "-C", str(root), "merge-base", "--is-ancestor", "--end-of-options",
+                              since, c], capture_output=True, text=True)
+        if got.returncode > 1:
+            raise subprocess.CalledProcessError(got.returncode, got.args, got.stdout, got.stderr)
+        return got.returncode == 0
     if since:
-        refs = _git_out(root, "for-each-ref", "--contains", since, "--format=%(refname)").split()
-        names = _git_out(root, "log", *refs, f"^{since}", "--name-only", "--format=", "--",
-                         REQUIREMENTS).splitlines() if refs else []
+        refs = [r for r in _git_out(root, "for-each-ref", "--contains", since, "--format=%(refname)",
+                                    check=True).split("\n") if r]     # "\n" only: a ref name may hold U+2028
+        refs += [c for c in revs if has(c)]
+        names = _git_out(root, "log", "--name-only", "--format=", "--end-of-options", *refs, f"^{since}", "--",
+                         REQUIREMENTS, check=True).split("\n") if refs else []
     else:
-        names = _git_out(root, "log", "--all", "--name-only", "--format=", "--", REQUIREMENTS).splitlines()
+        names = _git_out(root, "log", "--all", "--name-only", "--format=", "--end-of-options", *revs, "--",
+                         REQUIREMENTS, check=True).split("\n")
     trees, head = [root], None
     for line in _git_out(root, "worktree", "list", "--porcelain").splitlines() + [""]:
         if line.startswith("worktree "):
@@ -324,20 +358,20 @@ def _taken(root: Path) -> set:
         elif line.startswith("HEAD "):
             head = line[5:]
         elif not line and head:
-            if not since or subprocess.run(["git", "-C", str(root), "merge-base", "--is-ancestor", since, head],
-                                           capture_output=True).returncode == 0:
+            if not since or has(head):
                 trees.append(tree)
             head = None
     names += [p.name for t in trees for p in (t / REQUIREMENTS).glob("*/*.md")]
     return {found for n in names if (found := id_of(n))}
 
 
-def numbering(root: Path) -> list:
+def numbering(root: Path, revs=(), base_rev=None) -> list:
     """[(spec path, problem, new path or None)] for each spec whose file name does not carry the ID its
     place in the tree calls for: it has none, one of another folder's type, one that does not fit its
-    parent, or one another spec holds too (the one on the base branch keeps it). Parents come first and
-    their children are measured against the parent's new ID. A new ID is the next after every one that
-    _taken() finds, so none is handed out twice, and a gap stays a gap."""
+    parent, or one another spec holds too (the one on the base branch keeps it, on base_rev when the ref
+    here is not where origin has it, #85). Parents come first and their children are measured against
+    the parent's new ID. A new ID is the next after every one that _taken() finds, revs counted as refs,
+    so none is handed out twice, and a gap stays a gap."""
     base, top = root / REQUIREMENTS, root.resolve()
     specs = []                                    # (path, kind, parent), parents before children
     for folder, kind in FOLDERS.items():
@@ -369,7 +403,8 @@ def numbering(root: Path) -> list:
             why = f"{id_text(*got)} does not fit " + (f"its parent {id_text(*final[up])}" if up else "a spec without parent")
         else:
             same = holders[got]
-            keeper = next((q for q in same if on_base(root, rel(q)) is not None), same[0]) if len(same) > 1 else p
+            keeper = next((q for q in same if on_base(root, rel(q), base_rev) is not None), same[0]) \
+                if len(same) > 1 else p
             if keeper == p:
                 final[p] = got
                 continue
@@ -378,7 +413,7 @@ def numbering(root: Path) -> list:
         if not LETTER.match(name) or (got is None and LIKE_ID.match(name)):
             out.append((rel(p), "the name must start with a letter, rename it by hand", None))
             continue
-        taken = _taken(root) if taken is None else taken
+        taken = _taken(root, revs) if taken is None else taken
         n = 1 + max((t[1][-1] for t in taken if t[0] == kind and t[1][:-1] == above), default=0)
         final[p] = (kind, above + (n,))
         taken.add(final[p])

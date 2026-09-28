@@ -37,12 +37,11 @@ Every output of RE descends from something in the BA. The skill enforces traceab
 BA element                    →  RE element
 ──────────────────────────────────────────────────────
 HMW question                  →  Epic Hypothesis Statement
-Insights                      →  Benefits Hypothesis per feature
 Functional needs              →  User Stories (functional)
 Emotional needs               →  User Stories (emotional)
 Social needs                  →  User Stories (social)
 Jobs to be Done per level     →  User Story motivation
-Critical Hypotheses           →  Feature Validation section
+Critical Hypotheses           →  Leading indicators of the epic
 Idea Potential axes           →  Priority label P0 / P1 / P2
 Value Proposition             →  Definition of Done context
 ```
@@ -231,16 +230,7 @@ An ASR is a requirement whose realisation shapes the architecture. You cannot sa
 - Scale targets (concurrent users, data volume)
 - Integration constraints (must talk to system X, must not talk to Y)
 
-The skill labels every ASR as Critical, Moderate, or Low. A Critical ASR maps one-to-one to an ADR in planning, and the architecture quality gate will refuse to hand off if any Critical ASR has no matching ADR. This is the single most important traceability link in the whole V-Model.
-
-### Benefits Hypothesis, not "description"
-
-Teams love to write feature descriptions. The skill forces a stricter form: a Benefits Hypothesis, shaped like the test cards from validation.
-
-> We believe this feature creates value because {insight from BA}.
-> We will know we were right if {measurable signal}.
-
-The form does three things. It forces the feature to trace back to an Exploration insight. It forces a success signal that is testable. It makes it obvious which features are based on evidence and which are still unvalidated bets. The second category is not forbidden, but the distinction has to be explicit on the feature card.
+The skill marks every ASR Critical or Moderate. A Critical ASR usually becomes a decision record in planning.
 
 ## The clarifying interview
 
@@ -254,7 +244,7 @@ Like the BA, this skill spots gaps in your input and suggests the method that wi
 
 - **Epic Hypothesis missing the current alternative.** [User journey](../reference/methods-discovery#user-journey) focused on the "before" phase, so you can see how the user solves the problem today without your product.
 - **Feature has only functional user stories.** [Jobs to be done](../reference/methods-ideation#jobs-to-be-done) to surface the emotional and social layers so the stories stop feeling hollow.
-- **Benefits Hypothesis has no Exploration source.** [Qualitative interview](../reference/methods-discovery#qualitative-interview) or [User motivation analysis](../reference/methods-discovery#user-motivation-analysis) to anchor the hypothesis in real evidence.
+- **A story or benefit has no source in the BA.** [Qualitative interview](../reference/methods-discovery#qualitative-interview) or [User motivation analysis](../reference/methods-discovery#user-motivation-analysis) to anchor it in real evidence.
 - **Technical NFR reads "fast" or "secure" without a number.** [Expert conversations](../reference/methods-discovery#expert-conversations) with the engineering or operations team to get a concrete target.
 - **ASR is suspected but unverified.** [Expert review](../reference/methods-validation#expert-review) so you can confirm feasibility before writing the ADR.
 - **Success Criterion cannot be made measurable.** [Test grid](../reference/methods-validation#test-grid) or [Value proposition quantification](../reference/methods-validation#value-proposition-quantification) for a baseline you can test against.
@@ -275,7 +265,7 @@ The label is visible on every Feature card so the architect knows immediately wh
 
 ## Quality gates
 
-Once an item is approved, `pulse check` reads its spec as the base branch has it and applies six rules. They are the mechanical half of "can an agent plan from this". Before that, `pulse check --spec <path> ...` applies them to specs in your working tree (one `--spec` takes several paths, and a repeated `--spec` adds its paths), and `/pulse-re` runs it before its pull request (see below):
+Once an item is approved, `pulse check` reads its spec as the base branch has it and applies six rules. They are the mechanical half of "can an agent plan from this". Before that, `pulse check --spec <path> ...` applies them to specs in your working tree (one `--spec` takes several paths, and a repeated `--spec` adds its paths), and `/pulse-re` runs it before its last push (see below):
 
 | Rule | Checks |
 |---|---|
@@ -286,7 +276,7 @@ Once an item is approved, `pulse check` reads its spec as the base branch has it
 | R5 | success criteria without technology terms, every NFR with a number |
 | R6 | priority P0 to P2 and effort XS to L (split XL first) |
 
-Before its pull request, once `pulse new` has numbered the specs, the skill runs `pulse check --spec <path> ...` on every spec it wrote and fixes what it reports. It applies the same rules to the files as they are, R1 only for an epic, and asks no board, so a merged spec is one `pulse approve` takes.
+Before its last push, once `pulse new` has numbered the specs, the skill runs `pulse check --spec <path> ...` on every spec it wrote and fixes what it reports. It applies the same rules to the files as they are, R1 only for an epic, and asks no board, so a spec that passes is one `pulse approve` merges and approves.
 
 The judgment half stays with the interview and the approval: every prioritized need has a story, emotional and social layers were probed, success criteria measure an outcome for the user.
 
@@ -298,9 +288,9 @@ The final artifact is `architect-handoff.md`, a single document that planning wi
 
 Every item is on the board from the moment the skill names it, as a draft (`pulse new feat "<title>" --draft`), so the team sees a spec in progress and who writes it; an issue you name becomes the draft instead (`--issue <n>`). Before it writes, the skill checks the open drafts and items for overlap and asks you when one covers the same goal.
 
-The skill validates (forbidden-terms grep, NFRs with numbers, ASRs classified, an Activation Path per feature), runs `pulse number --apply` so every spec starts with its ID, commits the specs on the docs branch (`docs(re): <epic>`), and pushes it. Then it attaches each spec to its draft, epic first: `pulse new epic "<title>" --spec <path> --issue <n>`, then `pulse new feat "<title>" --parent <epic> --spec <path> --issue <n>` per feature, with `--blocked-by` where one needs another. `pulse new` takes a spec only once its commit is on origin. It writes each item number into its spec as `issue:`, links the spec to its parent (`parent:`), and lists it in the epic's Items. The skill runs `pulse check --spec <path> ...` on the numbered specs and fixes what it reports, commits these lines and the fixes, pushes again, opens a pull request into the base branch, and puts each spec up for approval. When the team wants an item built, a person runs `pulse approve <n>`, or approve spec on the map, so [`/pulse-go`](./pulse-go) can pick it up. Agents plan from the spec as the base branch has it, so the approval merges that pull request into the base branch first; nobody merges it on GitHub. `pulse approve` refuses while no open pull request, or more than one, carries the spec (R1), and for a feature while the spec breaks one of R2 to R6; an epic needs R1 only.
+The skill validates (forbidden-terms grep, NFRs with numbers, ASRs classified, an Activation Path per feature), runs `pulse number --apply` so every spec starts with its ID, commits the specs on the docs branch (`docs(re): <epic>`), and pushes it. Then it attaches each spec to its draft, epic first: `pulse new epic "<title>" --spec <path> --issue <n>`, then `pulse new feat "<title>" --parent <epic> --spec <path> --issue <n>` per feature, with `--blocked-by` where one needs another. `pulse new` takes a spec only once its commit is on origin. It writes each item number into its spec as `issue:`, links the spec to its parent (`parent:`), and lists it in the epic's Items. The skill runs `pulse check --spec <path> ...` on the numbered specs and fixes what it reports, commits these lines and the fixes, pushes again, and puts each spec up for approval, without a pull request. When the team wants an item built, a person runs `pulse approve <n>`, or approve spec on the map, so [`/pulse-go`](./pulse-go) can pick it up. Agents plan from the spec as the base branch has it, so the approval merges the docs branch into the base branch first, with a merge commit it pushes to origin; nobody merges it on GitHub. `pulse approve` refuses while no branch of origin, or more than one, carries the spec (R1), while the branch changes anything outside `_devprocess/`, and for a feature, improvement, or fix while the spec breaks one of R2 to R6; an epic needs R1 only. When you approve a spec in the session, the skill runs `pulse approve --claim <n>` itself, the merge included, and for a feature, improvement, or fix plans it in the same session without asking; an epic gets no PLAN and no claim. The claim comes before the approval and holds the item for planning whatever blocks it, so no live map starts `pulse go` for it; an item with an open blocker is planned and given back, and its build waits for its blockers. [Planning](./pulse-plan) is a step of `/pulse-re` too, and the build follows without a stop, in the session or through `pulse go` when several are ready, unless something holds the PLAN. An item approved later, by hand or on the map, is planned by `/pulse-go` or `/pulse-build <n>`.
 
-Your agent asks before these steps unless its permission settings allow them: Claude Code in its default mode, in the terminal and the VS Code extension alike, before every shell command outside a small read-only set such as `git status`, so before `pulse status`, `pulse check`, `git add`, the commits, the pushes, `pulse new`, and `gh pr create` ([the rules that stop these prompts](../tutorials/installation#fewer-prompts-in-claude-code)), and Codex, whose sandbox keeps `.git` read-only and has no network (with the Codex rules from `/pulse-setup`, it runs `pulse new` without asking). Allow them when asked.
+Your agent asks before these steps unless its permission settings allow them: Claude Code in its default mode, in the terminal and the VS Code extension alike, before every shell command outside a small read-only set such as `git status`, so before `pulse status`, `pulse check`, `git add`, the commits, the pushes, and `pulse new` ([the rules that stop these prompts](../tutorials/installation#fewer-prompts-in-claude-code)), and Codex, whose sandbox keeps `.git` read-only and has no network (with the Codex rules from `/pulse-setup`, it runs `pulse new` without asking). Allow them when asked. Both still ask before `pulse approve`, which merges the spec, even with those rules, because a person decides it; Codex in Full access refuses it, and the session then names the command for your own terminal.
 
 ## Read the skill file
 

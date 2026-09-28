@@ -41,9 +41,10 @@ CORE = {"context", "kontext", "decision drivers", "begründung", "begruendung",
         "considered options", "betrachtete optionen", "decision", "entscheidung",
         "consequences", "konsequenzen"}
 CODE_EXT = r"(?:py|ts|tsx|js|jsx|mjs|cjs|go|rs|java|kt|rb|cs|cpp|cc|c|h|hpp|sh|sql|swift|php|vue|svelte)"
-CODE_NAME = re.compile(r"(?<![\w/.-])([\w.-]*[a-z_][\w.-]*\.%s)\b" % CODE_EXT)
+# the first run stops at the first [a-z_]: one way to split a name, so linear in its length
+CODE_NAME = re.compile(r"(?<![\w/.-])((?:[^\W_a-z]|[.-])*[a-z_][\w.-]*\.%s)\b" % CODE_EXT)
 TECH_NAMES = {"node.js", "vue.js", "next.js", "nuxt.js", "express.js", "d3.js", "three.js", "chart.js"}
-LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
+LINK = re.compile(r"\[[^\[\]]*\]\(([^)\s\[]+)(?:\s+\"[^\"]*\")?\)")     # text and target end at the next "[": linear
 TICK = re.compile(r"`([^`\s]+)`")
 STUB = re.compile(r"FIXME\(stub\):(.*)")
 COMMENT = re.compile(r"^[ \t]*<!--.*?-->[ \t]*\n?", re.M | re.S)     # template guidance, not content
@@ -161,8 +162,20 @@ def _kind(rel: str, name: str, fm: dict) -> str | None:
             "_devprocess/arc42.md": "arc42", "_devprocess/SYSTEM-MAP.md": "system-map"}.get(rel)
 
 
+def _uncommented(text: str) -> str:
+    """The text without the comments that open a line, in linear time: only up to the line of the last `-->`.
+    After it no comment closes, and before it every `<!--` finds its end, so no open one searches to the end of
+    the file from each line (#41 audit M-1)."""
+    end = text.rfind("-->")
+    if end < 0:
+        return text
+    cut = text.find("\n", end)
+    cut = len(text) if cut < 0 else cut + 1
+    return COMMENT.sub("", text[:cut]) + text[cut:]
+
+
 def _counted(text: str, kind: str) -> int:
-    text = COMMENT.sub("", text)
+    text = _uncommented(text)
     if kind == "epic":                  # pulse new --parent writes the Items list, a line per item
         text = re.sub(r"^## +Items[ \t]*$.*?(?=^## |\Z)", "", text, flags=re.M | re.S)
     stop = {"plan": r"^## change log", "adr": r"^## implementation notes"}.get(kind)
@@ -187,7 +200,8 @@ def check_cap(root, path, text, fm):
 def check_activation(root, path, text):
     m = re.search(r"^## Activation Path\s*$(.*?)(?=^## |\Z)", text, re.M | re.S)
     body = m.group(1) if m else ""
-    missing = [k for k in ("Type", "Identifier") if not re.search(rf"^\s*-\s*{k}:", body, re.M)]
+    # [^\S\n]: one start per line, not per blank line (spec.REQ)
+    missing = [k for k in ("Type", "Identifier") if not re.search(rf"^[^\S\n]*-\s*{k}:", body, re.M)]
     if missing:
         yield Finding(path.relative_to(root).as_posix(), 1, "C6",
                       "no '## Activation Path' section" if not m else f"Activation Path lacks {', '.join(missing)}")
@@ -300,8 +314,12 @@ def run(root: Path) -> list:
     found += check_stubs(root)
     found += check_readiness(root)
     found += [Finding(p, 1, "C9", msg) for p, msg in spec.link_problems(root)]
-    found += [Finding(p, 1, "C10", f"{msg}: pulse number --apply fixes it" if new else msg)
-              for p, msg, new in spec.numbering(root)]
+    try:
+        found += [Finding(p, 1, "C10", f"{msg}: pulse number --apply fixes it" if new else msg)
+                  for p, msg, new in spec.numbering(root)]
+    except subprocess.CalledProcessError as e:      # no history read is no ID (#85 audit M-1)
+        found.append(Finding(spec.REQUIREMENTS, 0, "C10", "git cannot read the history here, so pulse number "
+                                                          f"hands out no ID: {ready.git_error(e.stderr or '')}"))
     found += [Finding(p, 1, "C11", msg) for p, msg in archmap.layer_problems(root)]
     return sorted(found, key=lambda f: (f.path, f.line, f.rule))
 
@@ -315,7 +333,7 @@ def main(args) -> int:
     skipped = [f for f in found if f.rule == "R1-R6"]      # no board: said, but no reason to block
     found = [f for f in found if f.rule != "R1-R6"]
     for f in found + skipped:
-        print(f)
+        print(ready.printable(str(f)))     # a path or link target is text others wrote (#41 audit L-2)
     if found:
         print(f"{len(found)} finding{'s' if len(found) != 1 else ''}")
         return 1

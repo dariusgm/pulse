@@ -115,7 +115,8 @@ def view(root: Path, items: list, cfg: dict, me: str, cap: int = None) -> dict:
 
 def _stackable(items: list) -> list:
     """A dependent whose one open blocker has a ready PR (its gates passed) builds on that
-    blocker's branch, and its PR targets it; after the blocker's merge pulse go moves it on."""
+    blocker's branch, and its PR targets it; after the blocker's merge pulse go moves it on. A fork's
+    PR is no base: its branch lives in the fork, named by its owner; the dependent waits (#63)."""
     by = {i["number"]: i for i in items}
     out = []
     for i in items:
@@ -123,7 +124,7 @@ def _stackable(items: list) -> list:
             continue
         base = by.get(i["blocked_by"][0]) or {}
         pr = base.get("pr") or {}
-        if pr and not pr.get("draft"):
+        if pr and not pr.get("draft") and not pr.get("fork"):
             out.append({**i, "base": pr["branch"], "stacked_on": base["number"]})
     return out
 

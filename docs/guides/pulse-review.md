@@ -33,7 +33,7 @@ The default is `branch` with an item number and `working` without one. Only a re
 | `pulse review 12 --record` | keeps the REVIEW.md a subagent wrote |
 | `pulse review 12 --publish` | puts the kept verdicts for HEAD on the branch's open pull request |
 
-The brief names the spec, the PLAN, and the base branch, and lists what a script can see without judgment: files the diff touches that the PLAN does not list (a directory in the PLAN covers what is in it; changes under `_devprocess/` are writeback and never count). It also says whether Pulse ran the project's tests at HEAD: in `pulse go` it did, so the reviewer does not run them again; by hand it says `tests: skipped`. The reviewer goes through the checks and writes `REVIEW.md`:
+The brief names the spec, the PLAN, and the base branch, and lists what a script can see without judgment: files the diff touches that the PLAN does not list (a directory in the PLAN covers what is in it; changes under `_devprocess/` are writeback and never count), and changed files an agent session reads as its instructions when it starts: `CLAUDE.md` and `AGENTS.md` in any folder, anything under `.claude/`, `.codex/`, or `.agents/`, and `.mcp.json`. It also says whether Pulse ran the project's tests at HEAD: in `pulse go` it did, so the reviewer does not run them again; by hand it says `tests: skipped`. The reviewer goes through the checks and writes `REVIEW.md` where the brief says: at the worktree root, or, in `pulse go`, beside the checkout it reads.
 
 | Check | Blocks when |
 |---|---|
@@ -52,13 +52,13 @@ Verdict: block
 - [note] src/api.py:77 maintainable: `tmp2` says nothing
 ```
 
-With an item number, `--run` and `--record` keep the report in `.git/pulse/reviews/<n>.md`, stamped with the commit the reviewer saw; `--record` and `--publish` need one, and only one of `--run`, `--record`, and `--publish` goes in a call. `--agent` picks another template from `[agents]` (default: `review_agent`, else `agent`), `--json` prints the result as JSON. The exit code is 0 for pass, 1 for block, 2 when the reviewer gave no verdict or the call was wrong.
+With an item number, `--run` and `--record` keep the report in `.git/pulse/reviews/<n>.md`, stamped with the commit the reviewer saw. A report counts only after the brief of this run: `pulse review <n>` (or `--run`) notes HEAD and the working tree before the session, and `--record` reads that note once, so `--record` without a brief, or a second time on the same brief, gives no verdict; `--record` and `--publish` need one, and only one of `--run`, `--record`, and `--publish` goes in a call. `--agent` picks another template from `[agents]` (default: `review_agent`, else `agent`), `--json` prints the result as JSON. The exit code is 0 for pass, 1 for block, 2 when the reviewer gave no verdict or the call was wrong.
 
 ## What happens with the verdict
 
 - **pass**: the chain goes on to the security audit ([/pulse-audit](./pulse-audit)). The pull request is ready for review only when the tests, the review, and the audit all passed on its last commit.
 - **block**: the builder fixes the blocking findings test-first and commits, and the chain starts again at the tests, so a fresh review looks again. After two fix rounds the pull request stays draft and its body says what is still open.
-- **no verdict**: the session failed, timed out, changed the branch, or wrote no `Verdict:` line. No fix round starts; the pull request stays draft and says why.
+- **no verdict**: the session failed, timed out, changed the branch, wrote no `Verdict:` line, or wrote its report without a brief of this run. No fix round starts; the pull request stays draft and says why.
 
 When a pull request's last commit has no review or no audit, or the agent just opened one without them, the Pulse Stop hook asks the agent to run what is missing before it hands back. A reviewer that changes the branch itself, by a commit or an edit, gets no verdict. The reviewer can be a different model than the builder: set `review_agent` in `.pulse/config.toml` to another template under `[agents]` ([configuration](../reference/configuration)).
 
@@ -68,7 +68,9 @@ A check the reviewer writes to confirm a finding, such as a reproduction or a pr
 
 A kept verdict lives in the clone that ran the review. Once the item's branch has an open pull request, `--run` and `--record` also put the verdict on it as a comment, `Pulse review: pass for <commit>.` with a hidden marker, one per gate and commit. `--publish` does the same for the review and audit verdicts kept for HEAD before the pull request existed, all in one comment, on the pull request of the branch checked out where you run it; `/pulse-build` runs it right after it opens the pull request, and `pulse go` does the same step after its own. When GitHub does not answer, `--run` and `--record` still keep the verdict, add `not published on the PR` with GitHub's error, and exit by the verdict; `--publish` stops with `pulse:` and GitHub's error and exit code 2. The kept verdict stays as it is either way, so `--publish` can run again later. With nothing to put on a pull request (no verdict kept for HEAD, no open pull request, or every verdict already on it), `--publish` says `nothing new for an open PR of this branch` and exits with 0.
 
-Whoever holds the item next, in another clone, finds the verdicts there: without a kept verdict of its own, Pulse reads the newest marker on the item's open pull request. Only markers from people who can push to the repository count (owner, member, collaborator), since anyone may comment on a pull request.
+Whoever holds the item next, in another clone, finds the verdicts there: without a kept verdict of its own, Pulse reads the newest marker on the item's open pull request. Anyone may comment on a pull request, so a marker counts only from someone who can push to the repository: the owner, or a member or collaborator whose permission GitHub names write or admin. GitHub calls people with read access members and collaborators too. A GitHub App is neither owner nor member nor collaborator, so its verdicts never count. A marker counts only on a line of its own, the way Pulse writes it, never inside a quote or a code block. Pulse asks GitHub about each author of a marker once per read, and the Stop hook once for both gates.
+
+When GitHub gives no answer, for example over its rate limit, or with the 403 it gives a login that cannot push to the repository itself, nobody can tell whether such a marker's author may push. The marker then counts for nothing, and while it is the newest of its gate, the gate has no verdict: no older verdict counts in its place. The Stop hook asks for the gates, names GitHub's reason, and says what to check first, and the map merges nothing and shows the reason. `--publish` still knows the markers of your own login, so it never posts a verdict twice. [Troubleshooting](../reference/troubleshooting#the-stop-hook-asks-for-gates-the-pull-request-has) says what to do.
 
 ## Repository mode
 

@@ -54,6 +54,7 @@ Then STOP. No fourth attempt. Question the pattern fundamentally and
 discuss with the user before any more fixes. This is a wrong
 architecture, not a failed hypothesis.
 
-**Every bug found gets an issue**, even when the fix is trivial. The
-issue carries both state and substance: symptom, root cause as a causal
-chain, fix, regression test.
+**Every bug found becomes a fix item**, even when the fix is trivial
+(Phase D, step 4). Its record on the board holds only its state; the
+fix spec holds the substance: symptom, root cause as a causal chain,
+fix, regression test.

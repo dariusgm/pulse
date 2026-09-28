@@ -12,7 +12,7 @@ When a coding agent ships a feature in an afternoon, the bottleneck moves from w
 1. **Blockers first.** An item is built only when every item that blocks it is done, or when its one open blocker has a ready pull request (see stacking below). Planning does not wait for blockers. The records on the board hold these links ("blocked by"), and the ramp reads them.
 2. **Disjoint files.** Two items run at the same time only if their PLANs touch different files. Every PLAN lists its files at the top; the ramp compares them with everything that is already running.
 
-The second rule catches merge conflicts and duplicate work in one criterion. It is conservative on purpose, and it needs a PLAN: an item without one waits at `needs a plan` until `pulse go` has planned it, so no build ever starts with unknown files.
+The second rule catches merge conflicts and duplicate work in one criterion. It is conservative on purpose, and it needs a PLAN: an item without one waits at `needs a plan` until it has one, planned in the `/pulse-re` session that approved it, by `/pulse-build`, or by `pulse go`, so no build ever starts with unknown files.
 
 ## The ramp
 
@@ -54,13 +54,13 @@ One `pulse go` run can drive Claude Code and Codex together, each with its own s
 
 ## Claims and handover
 
-A claim belongs to one session: a Claude Code session, a Codex thread, a `pulse go` run, or your terminal. All of them act under your GitHub login, so each claim also leaves a mark on the issue that names its session. A second session is refused, and of two claims at the same moment the older mark wins. The refusal names the holder, since when, and the command that frees the item, and the [map](../guides/pulse-map) shows the phase of a teammate's claim and its last sign of life ([What others see](#what-others-see)).
+A claim belongs to one session: a Claude Code session, a Codex thread, a `pulse go` run, or your terminal. All of them act under your GitHub login, so each claim also leaves a mark on the item's record that names its session. A second session is refused, and of two claims at the same moment the older mark wins. The refusal names the holder, since when, and the command that frees the item, and the [map](../guides/pulse-map) shows the phase of a teammate's claim and its last sign of life ([What others see](#what-others-see)).
 
-- **Hand over another person's claim:** `pulse release --take <n>`, after that person agreed. Their assignee and claim marks go, a comment on the issue names who did it, and the new session claims as usual. An agent runs it only on your yes.
+- **Hand over another person's claim:** `pulse release --take <n>`, after that person agreed. Their assignee and claim marks go, a comment on the record names who did it, and the new session claims as usual. An agent runs it only on your yes.
 - **Take over from a session of your own that has ended:** `pulse claim --take <n>`.
 - **Take an approval back:** `pulse approve --undo <n>`; until someone approves the item again, nothing claims it.
 
-`release` and `done` refuse a claim that is not yours; `pulse done --take <n>` closes an item whoever holds it. The levers that belong to a person (`approve`, `approve-plan`, `rank`, `done`, and `release --take`) refuse to run inside an agent that `pulse go` started, which carries `PULSE_HOLDER`. Such an agent holds as its run, so it claims, gives back, and blocks only its own item, which `PULSE_ITEM` names.
+`release` and `done` refuse a claim that is not yours; `pulse done --take <n>` closes an item whoever holds it. The levers that belong to a person (`approve`, `approve-plan`, `rank`, `done`, `release --take`, and `release --drop-unpushed`) refuse to run inside an agent that `pulse go` started, which carries `PULSE_HOLDER`. Such an agent holds as its run, so it claims, gives back, and blocks only its own item, which `PULSE_ITEM` names.
 
 ## What others see
 

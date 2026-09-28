@@ -1,7 +1,7 @@
 ---
 type: ba
 target-type: improvement | fix
-issue: {N, once the item has a GitHub issue}
+issue: {N, the number of its draft or of the item it adopted}
 project-ba-ref: {path to BA-PROJECT.md, or null}
 personas: []
 project-kpi-ref: []
@@ -9,7 +9,7 @@ scope: simple-test
 created: YYYY-MM-DD
 ---
 
-<!-- See skills/pulse-ba/SKILL.md for how to fill. The parent feature is the GitHub parent issue, not a frontmatter field. Cap: 40 lines. -->
+<!-- See skills/pulse-ba/SKILL.md for how to fill. The parent feature is the parent link of the item's record on the board, not a frontmatter field. Cap: 40 lines. -->
 
 # Mini-BA: {Item title}
 

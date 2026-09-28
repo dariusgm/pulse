@@ -22,8 +22,9 @@ exists outside the definition file and outside test files.
 On fail, the feature may not close. Options:
 1. Wire it up (add the caller).
 2. Demote `subtype:` to `library` with public API documentation.
-3. Leave a `FIXME(stub): wiring open -- see #<n>` at the definition,
-   open that issue, and keep the feature open.
+3. Register the wiring as an item on the board, leave a
+   `FIXME(stub): wiring open -- see #<n>` with its number at the
+   definition, and keep the feature open.
 
 Stack-specific tooling for the scan follows below.
 

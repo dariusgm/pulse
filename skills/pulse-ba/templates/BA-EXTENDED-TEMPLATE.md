@@ -2,7 +2,7 @@
 title: {Title} (extended)
 date: YYYY-MM-DD
 target-type: project | epic | feature
-issue: {N, once the item has a GitHub issue}
+issue: {N, the number of its draft or of the item it adopted; a Project-BA has none}
 ba-ref: {path to the short BA this extends}
 ---
 

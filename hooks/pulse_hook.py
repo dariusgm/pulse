@@ -11,14 +11,18 @@ Every event of an active project also lands in the presence log.
 
 A hook must never break a session: any failure is swallowed and the hook
 prints nothing. The active item comes from the issue cache that the pulse
-CLI keeps (state.cache_path). Two paths reach GitHub through gh: the stop
+CLI keeps (state.cache_path). Four paths reach GitHub through gh: the stop
 verdict, where review.last reads the verdicts on the item's PR when this
-clone keeps none, and the heartbeat on a tool event, at most every 10
-minutes per session and in the background.
+clone keeps none and asks once per author of one whether they may push,
+the heartbeat on a tool event, at most every 10
+minutes per session and in the background, the stop verdict for a PR or
+unpushed commits, one read of the item within 2 s for who holds it, and a
+session start on an item the board cache lacks, one read within 2 s.
 """
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -29,7 +33,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 sys.path.insert(0, str(ROOT))
 
-from pulse import config, dispatch, go, presence, review, setup, state  # noqa: E402
+from pulse import config, dispatch, go, presence, ready, review, setup, state  # noqa: E402
 
 PARALLEL = {
     "off": "Parallel: off (.pulse/config.toml). Work on one item at a time.",
@@ -65,7 +69,14 @@ def emit(event, text, env):
     return json.dumps({"hookSpecificOutput": {"hookEventName": event, "additionalContext": text}})
 
 
+def quick(args):
+    """gh within 2 s: a hook never waits long for GitHub. state.gh is looked up per call, so tests can swap it."""
+    return state.gh(args, timeout=2)
+
+
 def active_item(root):
+    """The item of the checked-out branch, from the board cache, else from one read of it (a lost beat drops the
+    cache); and who holds it when another login does (#99 FR-06)."""
     try:
         branch = subprocess.run(["git", "-C", str(root), "rev-parse", "--abbrev-ref", "HEAD"],
                                 capture_output=True, text=True, timeout=2).stdout.strip()
@@ -74,14 +85,24 @@ def active_item(root):
     n = state.item_of(branch)          # feat/, imp/, fix/: a docs/12-x branch is no item's
     if not n:
         return ""
-    item = {}
+    item, held = {}, ""
     try:
-        item = next((i for i in state.cached(root) if i.get("number") == n), {})
-    except (OSError, subprocess.TimeoutExpired):
-        pass
-    line = f"Active item: #{n} {item.get('title', '')}".rstrip() + f" (branch {branch})."
+        item = next((i for i in state.cached(root) if i.get("number") == n), None)
+        if item is None:
+            v = json.loads(quick(["issue", "view", str(n), "--repo", state.repo(root, quick),
+                                  "--json", "title,body,assignees"]))
+            spec = state.SPEC.search(v.get("body") or "")
+            item = {"title": v["title"], "assignees": [a["login"] for a in v["assignees"]],
+                    "spec": spec.group(1) if spec else None}
+        who = item.get("assignees") or []
+        held = "" if not who or state.me(root, run=cached_only) in who else ", ".join(who)
+    except (OSError, subprocess.TimeoutExpired, state.StateError, ValueError, KeyError, TypeError):
+        item = item or {}
+    line = f"Active item: #{n} {ready.printable(item.get('title') or '')}".rstrip() + f" (branch {branch})."
     if item.get("spec"):
-        line += f" Spec: {item['spec']}."
+        line += f" Spec: {ready.printable(item['spec'])}."
+    if held:
+        line += f" It is held by {ready.printable(held)}: work on it only when the person says so."
     return line + f" Details: `pulse show {n}`."
 
 
@@ -237,10 +258,29 @@ def idle_capacity(root, cfg):
             "(or as parallel subagents), or say in one sentence why not.")
 
 
-def unreviewed_pr(root, payload, entries):
+def held_here(root, n, payload, memo):
+    """Whether this session holds n as the board says now: its login is assigned and no mark stands before its
+    own (state._lead); None when the read fails or no login is cached. One read of the item within 2 s per stop,
+    shared by its reasons, and never the board cache, which names the old holder after a take until a heartbeat
+    drops it (#99 FR-01, FR-02)."""
+    if n not in memo:
+        who = {"id": f"{'codex' if 'turn_id' in payload else 'claude'}:{payload.get('session_id') or ''}"}
+        try:
+            v = json.loads(quick(["issue", "view", str(n), "--repo", state.repo(root, quick),
+                                  "--json", "assignees,comments"]))
+            memo[n] = state.me(root, run=cached_only) in [a["login"] for a in v["assignees"]] and \
+                not state._lead(v, who)[1]
+        except (OSError, subprocess.TimeoutExpired, state.StateError, ValueError, KeyError, TypeError):
+            memo[n] = None
+    return memo[n]
+
+
+def unreviewed_pr(root, payload, entries, memo=None):
     """A pull request is ready only with a review and a security audit of its last commit
     (ADR-05). The cache may not know a PR opened this turn yet, so `gh pr create` in this
-    turn counts too, unless its tool result is an error (denied, or gh failed)."""
+    turn counts too, unless its tool result is an error (denied, or gh failed). Only while this
+    session holds the item: its verdicts would land on the PR of whoever took it (#99 FR-02); a
+    read that fails asks as before."""
     if payload.get("agent_id"):
         return ""
     try:
@@ -257,16 +297,23 @@ def unreviewed_pr(root, payload, entries):
                if u.get("name") == "Bash" and "gh pr create" in u["input"].get("command", "")]
     failed = failed_tool_uses(entries) if creates else set()
     opened = any(u.get("id") not in failed for u in creates)
-    if not (item.get("pr") or opened):
+    if not (item.get("pr") or opened) or held_here(root, n, payload, {} if memo is None else memo) is False:
         return ""
-    missing = [k for k in ("review", "audit") if (review.last(root, n, k) or {}).get("commit") != head]
+    known = {}                 # what GitHub said of the authors of markers, for both gates (#74)
+    missing = [k for k in ("review", "audit") if (review.last(root, n, k, known) or {}).get("commit") != head]
     if not missing:
         return ""
+    why = next((v for v in known.values() if isinstance(v, str)), "")
     how = "; ".join(f"`pulse {k} {n} --run`, or a subagent with the brief from `pulse {k} {n}`, "
                     f"then `pulse {k} {n} --record`" for k in missing)
-    return (f"Pulse: #{n} has a pull request, but its last commit has no {' and no '.join(missing)}. "
-            f"Run {'them' if len(missing) > 1 else 'it'} in a fresh session ({how}); "
-            "the PR stays draft until both pass.")
+    gates = f"{'them' if len(missing) > 1 else 'it'} in a fresh session ({how}); the PR stays draft until both pass."
+    if not why:
+        return f"Pulse: #{n} has a pull request, but its last commit has no {' and no '.join(missing)}. Run {gates}"
+    return (f"Pulse: #{n} has a pull request, but its last commit has no {' and no '.join(missing)} that counts: "
+            f"Pulse could not check who posted the verdicts on the PR ({ready.printable(why)}). First check that gh "
+            "uses your account that can push to the repository (`gh auth status`; `gh auth switch` changes it), or "
+            "wait until GitHub's rate limit resets. If you cannot push, ask for write access, or leave the gates to "
+            f"someone who can. Otherwise run {gates}")        # as the troubleshooting page says (#74)
 
 
 def untested_code(entries):
@@ -287,11 +334,15 @@ def untested_code(entries):
 def heartbeat(root, payload, env):
     """A session that holds an item keeps a sign of life on the board: on a tool event, at most every
     BEAT seconds (a stamp per session in the shared git dir), its claim marks name the phase `working`
-    and the time; a draft keeps its phase, analysis or spec. pulse go beats for its own sessions."""
+    and the time; a draft keeps its phase, analysis or spec. pulse go beats for its own sessions.
+    An item whose older mark is another session's now is lost (#77), and so is one a person took with
+    pulse release --take since this session's last beat or claim held it: a note beside the stamp keeps
+    what each beat held, and an item gone from it is read once (#84). The news waits beside the stamp
+    for lost_news; a beat that finds a loss drops the board cache, so the stop hook asks for no push."""
     sid = str(payload.get("session_id") or "")
     if not (sid and payload.get("tool_name")) or env.get("PULSE_HOLDER"):
         return
-    stamp = config.pulse_dir(root) / "beats" / re.sub(r"[^\w.-]", "_", sid)
+    stamp = state.stamp(root, sid)
     try:
         if time.time() - stamp.stat().st_mtime < BEAT:
             return
@@ -300,23 +351,97 @@ def heartbeat(root, payload, env):
     stamp.touch()              # before gh: a round that fails waits its ten minutes too
     gh = state.gh              # looked up per call so tests can swap it
     # ponytail: a Codex session is its hook's session_id, taken to be CODEX_THREAD_ID (the docs show
-    # thread ids there); if they differ, its claims get no heartbeat. Each session leaves its empty
-    # stamp behind; SessionEnd could take it along if they ever pile up.
+    # thread ids there); if they differ, its claims get no heartbeat. Each session leaves its stamp and
+    # notes behind; SessionEnd could take them along if they ever pile up.
     who = {"id": f"{'codex' if 'turn_id' in payload else 'claude'}:{sid}"}
+    was = state.held(root, who)
+    had, at = set(was.get("items", [])), state._utc(state.SKEW)      # at: before the reads, a take after them is younger
     repo, login = state.repo(root, gh), state.me(root, gh)
+    lost, now = {}, []
     for i in state.cached(root) or state.load(root, repo, run=gh):
-        if i.get("claimed_by") == login:
-            state.beat(root, repo, i["number"], (i.get("draft") and i.get("claimed_phase")) or "working",
-                       run=gh, who=who)
+        n = i["number"]
+        if login not in (i.get("assignees") or []):
+            continue
+        if state.beat(root, repo, n, (i.get("draft") and i.get("claimed_phase")) or "working", run=gh, who=who):
+            now.append(n)
+            continue
+        by = state.holds(repo, n, run=gh, who=who)[1]
+        if by:                 # another session of my login goes on; another person's claim is freed by mine
+            back = "" if i.get("claimed_by") == login else f", give it back with `pulse release {n}`"
+            lost[n] = (state.LOST.format(n) + f"{by} holds it, with the older claim. "
+                       f"Stop the work on #{n}, push nothing of it{back}, and tell the person.")
+    for n in sorted(had - set(now) - set(lost)):              # given back, or taken
+        try:
+            by = state.taken(state._view(repo, n, gh), login, was["at"])
+        except (state.StateError, ValueError):               # deleted since, or gh failed: the others go on
+            continue
+        if by:
+            lost[n] = (state.LOST.format(n) + f"it was handed over with `pulse release --take {n}` "
+                       f"and went to {by}. Stop the work on #{n}, push nothing of it, and tell the person.")
+    if lost:                   # first: a note that cannot be written costs no news
+        state.drop_cache(root)                               # the stop hook reads the board as it is now
+        news = state.stamp(root, sid, ".lost")               # news waits until heard, each line once
+        state.keep_note(news, "\n".join(dict.fromkeys([*state.read_note(news).splitlines(), *lost.values()])))
+    kept = set(state.held(root, who).get("items", []))       # what a claim or release of this session changed meanwhile
+    state.keep_held(root, who, at, (set(now) - (had - kept)) | (kept - had))
+
+
+def lost_news(root, payload, env):
+    """What the heartbeat found lost, said on the next event whose context reaches the session: a
+    prompt, and for Claude Code a tool result too (Codex takes it on a prompt only). The next heartbeat
+    finds it again while the session holds its mark behind another. The note reaches the session as
+    printable text only (#84 audit)."""
+    event = payload.get("hook_event_name")
+    if event != "UserPromptSubmit" and not (event == "PostToolUse" and "turn_id" not in payload):
+        return ""
+    lost = state.stamp(root, str(payload.get("session_id") or ""), ".lost")
+    text = "\n".join(map(ready.printable, state.read_note(lost).splitlines())).strip()
+    out = emit(event, text, env) if text else ""
+    if out or not text:        # a platform that shows no context here keeps the note
+        try:
+            lost.unlink()
+        except OSError:
+            pass
+    return out
+
+
+def unpushed_work(root, cfg, payload, memo=None):
+    """Commits on the checked-out branch of an item this login holds, or its docs branch, that origin
+    lacks: the session pushes before it ends, so the team sees the work and whoever takes the item
+    over starts from it (#79). Local first; only then the holder, from one read of the item within 2 s
+    (held_here), so a slow gh never costs this stop its other reasons and a read that fails asks for
+    nothing. A session whose item an older claim holds, or a person took, pushes nothing (#77, #99 FR-01).
+    A branch name is quoted as a shell reads it (#79 audit L-1)."""
+    if payload.get("agent_id"):
+        return ""
+    try:
+        branch = subprocess.run(["git", "-C", str(root), "rev-parse", "--abbrev-ref", "HEAD"],
+                                capture_output=True, text=True, timeout=2).stdout.strip()
+        docs = re.match(r"docs/(\d+)-", branch)
+        n = state.item_of(branch) or (int(docs.group(1)) if docs else None)
+        kept = n and [k for b, k in ready.unpushed(root, n, cfg["base_branch"] or config.default_branch(root))
+                      if b == branch]
+    except (OSError, subprocess.TimeoutExpired, state.StateError, ValueError):
+        return ""
+    if not kept or not held_here(root, n, payload, {} if memo is None else memo):
+        return ""
+    return (f"Pulse: {branch} has {kept[0]} commit{'s' if kept[0] != 1 else ''} only this clone has. Push "
+            f"before you end: `git push -u origin {shlex.quote(branch)}`; the team sees the work on #{n}, and "
+            "whoever takes it over starts from it.")
 
 
 def stop_verdict(root, cfg, payload, env):
+    """The reasons to go on before a session ends. The first call of gh is the one read of who holds the item
+    (held_here), and after a take it answers alone: no verdict is read (#99 fix round 1). A session that holds
+    an item with a PR needs up to four calls of gh; hooks.json gives the Stop hook 10 s for them."""
     # PULSE_HOLDER: an agent or gate session of pulse go, which runs the gates itself
     if platform(env) != "claude" or payload.get("stop_hook_active") or env.get("PULSE_HOLDER"):
         return ""
     path = payload.get("transcript_path")
     entries = read_transcript(path) if path else []
-    reasons = [r for r in (untested_code(entries), unreviewed_pr(root, payload, entries)) if r]
+    memo = {}                  # who holds the item: one read for both reasons
+    reasons = [r for r in (untested_code(entries), unreviewed_pr(root, payload, entries, memo),
+                           unpushed_work(root, cfg, payload, memo)) if r]
     return json.dumps({"decision": "block", "reason": " ".join(reasons)}) if reasons else ""
 
 
@@ -336,9 +461,14 @@ def main(argv, stdin_text, env):
             except (ValueError, OSError, AttributeError):
                 pass
         if event == "presence":
-            if cfg["mode"] == "on":
-                heartbeat(root, json.loads(stdin_text), env)
-            return ""
+            if cfg["mode"] != "on":
+                return ""
+            payload = json.loads(stdin_text)
+            try:
+                heartbeat(root, payload, env)
+            except Exception:  # a beat that failed (gh, a note it cannot write) keeps no news from the session
+                pass
+            return lost_news(root, payload, env)
         if event == "Stop":
             return stop_verdict(root, cfg, json.loads(stdin_text), env) if cfg["mode"] == "on" else ""
         text = context(event, root, cfg, env)

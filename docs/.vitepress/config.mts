@@ -1,5 +1,4 @@
 import { defineConfig } from 'vitepress'
-import { withMermaid } from 'vitepress-plugin-mermaid'
 
 const tutorialsSidebar = [
   {
@@ -81,57 +80,53 @@ const conceptsSidebar = [
   },
 ]
 
-export default withMermaid(
-  defineConfig({
-    title: 'Pulse',
-    description: 'Operating model, live collaboration, and the Digital Innovation Agents: from raw idea to shipped code, built in parallel by people and agents.',
-    base: '/pulse/',
-    head: [
-      ['link', { rel: 'icon', type: 'image/svg+xml', href: '/pulse/assets/pulse-icon-hell.svg' }],
-      ['meta', { name: 'theme-color', content: '#007780' }],
-      ['meta', { property: 'og:title', content: 'Pulse' }],
-      ['meta', { property: 'og:description', content: 'Operating model, live collaboration, and a V-Model method for teams of people and coding agents.' }],
-      ['meta', { name: 'keywords', content: 'Pulse, V-Model, innovation, business analysis, requirements engineering, parallel agents, GitHub issues, ADR, OWASP, Claude Code, Cursor, Codex' }],
+export default defineConfig({
+  title: 'Pulse',
+  description: 'Operating model, live collaboration, and the Digital Innovation Agents: from raw idea to shipped code, built in parallel by people and agents.',
+  base: '/pulse/',
+  head: [
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/pulse/assets/pulse-icon-hell.svg' }],
+    ['meta', { name: 'theme-color', content: '#007780' }],
+    ['meta', { property: 'og:title', content: 'Pulse' }],
+    ['meta', { property: 'og:description', content: 'Operating model, live collaboration, and a V-Model method for teams of people and coding agents.' }],
+    ['meta', { name: 'keywords', content: 'Pulse, V-Model, innovation, business analysis, requirements engineering, parallel agents, GitHub issues, ADR, OWASP, Claude Code, Cursor, Codex' }],
+  ],
+
+  appearance: { initialValue: 'light' },
+  lastUpdated: true,
+  cleanUrls: true,
+  lang: 'en',
+
+  themeConfig: {
+    logo: { light: '/assets/pulse-logo-petrol.svg', dark: '/assets/pulse-logo-aqua.svg', alt: 'Pulse' },
+    siteTitle: false,
+    nav: [
+      { text: 'Tutorials', link: '/tutorials/installation', activeMatch: '/tutorials/' },
+      { text: 'Guides', link: '/guides/pulse', activeMatch: '/guides/' },
+      { text: 'Concepts', link: '/operating-model', activeMatch: '/(concepts/|operating-model)' },
+      { text: 'Reference', link: '/reference/commands', activeMatch: '/reference/' },
+      { text: 'About', link: '/about' },
     ],
-
-    appearance: { initialValue: 'light' },
-    lastUpdated: true,
-    cleanUrls: true,
-    lang: 'en',
-
-    themeConfig: {
-      logo: { light: '/assets/pulse-logo-petrol.svg', dark: '/assets/pulse-logo-aqua.svg', alt: 'Pulse' },
-      siteTitle: false,
-      nav: [
-        { text: 'Tutorials', link: '/tutorials/installation', activeMatch: '/tutorials/' },
-        { text: 'Guides', link: '/guides/pulse', activeMatch: '/guides/' },
-        { text: 'Concepts', link: '/operating-model', activeMatch: '/(concepts/|operating-model)' },
-        { text: 'Reference', link: '/reference/commands', activeMatch: '/reference/' },
-        { text: 'About', link: '/about' },
-      ],
-      sidebar: {
-        '/tutorials/': tutorialsSidebar,
-        '/guides/': guidesSidebar,
-        '/reference/': referenceSidebar,
-        '/concepts/': conceptsSidebar,
-        '/operating-model': conceptsSidebar,
-      },
-      socialLinks: [
-        { icon: 'github', link: 'https://github.com/pssah4/pulse' },
-      ],
-      search: {
-        provider: 'local',
-      },
-      editLink: {
-        pattern: 'https://github.com/pssah4/pulse/edit/main/docs/:path',
-        text: 'Edit this page on GitHub',
-      },
-      footer: {
-        message: '<a href="https://github.com/pssah4/pulse/blob/main/LICENSE">MIT License</a> | <a href="/pulse/imprint">Imprint</a>',
-        copyright: 'Provided as-is, without any warranty or liability.',
-      },
+    sidebar: {
+      '/tutorials/': tutorialsSidebar,
+      '/guides/': guidesSidebar,
+      '/reference/': referenceSidebar,
+      '/concepts/': conceptsSidebar,
+      '/operating-model': conceptsSidebar,
     },
-
-    mermaid: {},
-  }),
-)
+    socialLinks: [
+      { icon: 'github', link: 'https://github.com/pssah4/pulse' },
+    ],
+    search: {
+      provider: 'local',
+    },
+    editLink: {
+      pattern: 'https://github.com/pssah4/pulse/edit/main/docs/:path',
+      text: 'Edit this page on GitHub',
+    },
+    footer: {
+      message: '<a href="https://github.com/pssah4/pulse/blob/main/LICENSE">MIT License</a> | <a href="/pulse/imprint">Imprint</a>',
+      copyright: 'Provided as-is, without any warranty or liability.',
+    },
+  },
+})

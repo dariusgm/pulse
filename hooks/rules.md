@@ -68,11 +68,21 @@ claim belongs to the session that made it: another session, even under
 the same login, gets exit 1 and picks other work; the refusal names the
 command that frees the item. A stopped `pulse go` leaves its work on the
 item branch and a note on the item; whoever goes on builds on that
-branch. `pulse release --take <n>` hands another
+branch. Push after every commit, on an item branch and a docs branch
+alike: work only this clone has is invisible to the team and lost to
+whoever takes over, and the stop hook names a missing push (an agent of
+`pulse go` leaves the push to its run). A session told that it no longer
+holds its item (by the hook or `pulse beat`) stops the work on it, pushes
+nothing of it, and tells the person. `pulse release --drop-unpushed`
+gives an item back without its unpushed commits only on the person's
+word. `pulse release --take <n>` hands another
 person's claim over: their assignee and marks go, and a comment names
 who did it; then claim as usual. `pulse claim --take <n>` takes over
 from a session of your own that has ended. An agent runs either only
-after the user says yes. When Codex refuses a `pulse` command with
+after the user says yes. Work starts from origin, never from the local
+base branch, which may lag behind what others pushed: `pulse claim`
+fetches and names the start point, and a docs branch starts from
+`origin/<base>` after `git fetch origin`. When Codex refuses a `pulse` command with
 "approval required by policy", the session runs in Full access and
 cannot ask: give the person the command for their own terminal, or ask
 them to switch Codex to a mode that asks, and look for no other way. A
@@ -94,9 +104,12 @@ Commits name their item: `Refs: #<n>`.
 Pulse stops for a person at these points and runs on everywhere else:
 the business analysis is approved; a person reads the spec and approves
 it (`pulse approve`, or approve spec in the map, which means build it:
-planning and the build follow in ramp order; a spec still in its open
-spec pull request is merged into the base branch first, where agents
-plan from it); a PLAN only when something
+a spec approved in the `/pulse-re` session is planned there at once and
+built without a stop, any other in ramp order; a spec not yet on the
+base branch is merged into the base branch first, where agents plan from
+it: through an open spec pull request that carries it, else from its one
+branch of origin without a pull request, except on a protected base branch,
+where `pulse approve` merges a pull request of that branch); a PLAN only when something
 holds it (a risk flag or effort L in the spec, `needs:` in the PLAN, or
 `plan_approval = "manual"`; then `pulse approve-plan <n>`); the merge of
 each feature's pull request into the base branch. `pulse rank` steers

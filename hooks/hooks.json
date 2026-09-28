@@ -29,7 +29,7 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd\" pulse stop",
-            "timeout": 5
+            "timeout": 10
           }
         ]
       }

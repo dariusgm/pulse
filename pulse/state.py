@@ -20,7 +20,10 @@ import os
 import posixpath
 import random
 import re
+import shlex
+import stat
 import subprocess
+import tempfile
 import time
 import uuid
 from pathlib import Path
@@ -29,7 +32,7 @@ from pulse import config
 
 TTL = 30                 # a full reload at least this often: PR checks move without a new tag
 POLL = 2                 # seconds between the free conditional checks for a change
-FORMAT = 5               # of the issue cache, raised when an item gains a field or load attaches differently
+FORMAT = 7               # of the issue cache, raised when an item gains a field or load attaches differently
 # ponytail: comments ride along only for the claim marks (who holds an item, since when); a repo
 # with long issue threads pays for them in every full reload
 FIELDS = "number,title,state,labels,assignees,parent,blockedBy,blocking,body,url,updatedAt,comments"
@@ -40,12 +43,22 @@ LEGACY_READY = "pulse:ready"           # the same label before 2026-09
 PLAN_OK = "pulse:plan-ok"              # a person approved the PLAN
 DRAFT = "pulse:draft"                  # a record without a spec yet: BA or RE works on it
 WRITERS = {"OWNER", "MEMBER", "COLLABORATOR"}     # may push; anyone may comment on a public issue or PR
+CLAIMING = 10 * 60         # seconds a mark of someone not assigned may be a claim in flight (#77)
+WAIT = 3                   # seconds a claim waits for such a claim's assignee to show
+SKEW = 60                  # seconds this clock may run ahead of GitHub's: a session's note is dated that early (#84)
+NOTE_BYTES = 16384         # the most of a note beside a session's stamp that is read
+HELD_MAX = 32              # items a session's note may list; a session holds a few (#84 audit L-3)
+UTC = re.compile(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ")          # a time as _utc writes it
+LOST = "Pulse: this session no longer holds #{}; "            # the start of the heartbeat's news of a lost item
 SPEC = re.compile(r"^Spec: `([^`]+)`", re.M)
 RANK = re.compile(r"^Rank:[ \t]*(-?\d+(?:\.\d+)?)[ \t]*$", re.M)     # the team order, lowest first
 PLAN_OK_LINE = re.compile(r"^Plan-ok:[ \t]*([0-9a-f]+)[ \t]*$", re.M)   # the PLAN a person approved
 REMOTE = re.compile(r"github\.com[:/]([\w.-]+/[\w.-]+?)(?:\.git)?/?$")
 MARK = re.compile(r"<!-- pulse:claim (\{.*?\}) -->")
 NOTE = re.compile(r"<!-- pulse:note (\{.*?\}) -->")
+TAKE = "Released from {} by {} with pulse release --take {}."      # a person's release --take says so on the item
+# and taken reads it (#84): a login holds no space or comma, so a comment anyone wrote is read in linear time
+TAKEN = re.compile(r"{}([^\s,]+(?:, [^\s,]+)*){}\S+{}\d+{}".format(*map(re.escape, TAKE.split("{}"))))
 COMMENT = re.compile(r"#issuecomment-(\d+)$")
 ITEM_BRANCH = re.compile(r"^(?:feat|imp|fix)/(\d+)-")        # how pulse names an item's branch
 
@@ -60,11 +73,11 @@ def item_of(branch):
     return int(m.group(1)) if m else None
 
 
-def gh(args: list) -> str:
+def gh(args: list, timeout=60) -> str:
     try:
-        out = subprocess.run(["gh", *args], capture_output=True, text=True, timeout=60)
+        out = subprocess.run(["gh", *args], capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
-        raise StateError(f"gh {' '.join(args[:2])}: no answer within 60 s") from None
+        raise StateError(f"gh {' '.join(args[:2])}: no answer within {timeout} s") from None
     if out.returncode != 0:
         raise StateError(f"gh {' '.join(args[:2])}: {out.stderr.strip() or out.stdout.strip()}")
     return out.stdout
@@ -90,6 +103,37 @@ def repo(root: Path, run=gh) -> str:
         return found[0]
     raise StateError(f"{len(found)} GitHub remotes ({', '.join(found) or 'none'}); "
                      'set repo = "owner/name" in .pulse/config.toml')
+
+
+WRITE = ("admin", "maintain", "write")    # the permissions that may push; GitHub names maintain as write
+LOGIN = re.compile(r"[A-Za-z0-9_-]+")       # a person's login; an Enterprise Managed User's is handle_shortcode
+
+
+def can_push(repo_name: str, login: str, run=gh) -> bool:
+    """Whether login may push to the repository, as GitHub answers now; a login GitHub never gives may not.
+    Without an answer (an error, the rate limit, the 403 GitHub gives a gh user who cannot push) gh's
+    StateError passes through: then nobody knows."""
+    if not LOGIN.fullmatch(login or ""):
+        return False
+    said = run(["api", f"repos/{repo_name}/collaborators/{login}/permission", "--jq", ".permission"])
+    return said.strip() in WRITE
+
+
+def writer(comment: dict, repo_name: str, run, known: dict):
+    """Whether the author of a comment may push (#74): True for the owner at once, and for a member or a
+    collaborator (GitHub calls readers so too) once can_push says so; False for anyone else; GitHub's
+    reason when it gave no answer: then the verdict counts for nothing, and no older one counts in its place.
+    known holds the answers of one read or event (login: True, False, or that reason), so each author is asked
+    once."""
+    who, login = comment.get("authorAssociation"), (comment.get("author") or {}).get("login") or ""
+    if who == "OWNER" or who not in WRITERS:
+        return who == "OWNER"
+    if login not in known:
+        try:
+            known[login] = can_push(repo_name, login, run)
+        except (StateError, OSError) as e:
+            known[login] = str(e) or type(e).__name__
+    return known[login]
 
 
 def _rank(body: str):
@@ -288,12 +332,14 @@ def load(root: Path, repo_name: str, run=gh, fresh: bool = False) -> list:
     prs = json.loads(run(["pr", "list", "--repo", repo_name, "--state", "open", "--limit", "200",
                           "--json", "number,headRefName,baseRefName,isDraft,closingIssuesReferences,"      # files:
                                     "statusCheckRollup,reviewRequests,files,changedFiles,isCrossRepository,"
-                                    "headRefOid"]))   # #62; the head a merge from the map binds to (#70)
+                                    "headRefOid,updatedAt"]))   # #62; the head a merge binds to (#70); #99
     closes = {n: {"number": pr["number"], "branch": pr["headRefName"], "base": pr.get("baseRefName"),
                   "draft": pr["isDraft"], "checks": checks(pr.get("statusCheckRollup") or []),
-                  "head": pr.get("headRefOid"),
+                  "head": pr.get("headRefOid"), "fork": bool(pr.get("isCrossRepository")),    # built on never (#63)
+                  "updated": pr.get("updatedAt"),       # a verdict posted since: the map reads the PR again (#99)
                   "reviewers": [r["login"] for r in pr.get("reviewRequests") or [] if r.get("login")]}
-              for pr in prs for n in pr_items(pr)}
+              for pr in sorted(prs, key=lambda p: not p.get("isCrossRepository"))   # an own PR wins over a fork's
+              for n in pr_items(pr)}
     carry = [{"number": pr["number"], "branch": pr["headRefName"], "base": pr.get("baseRefName"),
               "draft": pr["isDraft"], "docs": docs_only(pr),
               "files": [f.get("path", "") for f in pr.get("files") or []]}
@@ -310,8 +356,10 @@ def pr_items(pr: dict) -> set:
     only in a PR against the default branch; against develop or a blocker's branch the branch
     name is all there is. A PR whose files are all under _devprocess/ (a spec, a plan) builds
     nothing by its name alone (FIX-02-06-04); files are known only where a call asks for them,
-    and only a complete list counts: gh lists 100 at most, sorted by path."""
-    n = None if docs_only(pr) else item_of(pr.get("headRefName"))
+    and only a complete list counts: gh lists 100 at most, sorted by path. Nor does a fork's PR:
+    whoever owns the fork names its branch (#63). A call that asks for no isCrossRepository reads
+    every PR as one of this repository."""
+    n = None if docs_only(pr) or pr.get("isCrossRepository") else item_of(pr.get("headRefName"))
     return {ref["number"] for ref in pr.get("closingIssuesReferences") or [] if "number" in ref} | \
         ({n} if n else set())
 
@@ -336,15 +384,18 @@ def sync_merged(root: Path, repo_name: str, items: list, run=gh) -> list:
     (GitHub closes only on the default branch; a stacked PR merges into its blocker's branch),
     and retarget a stacked PR whose blocker's branch was merged. Returns the items it closed."""
     merged = json.loads(run(["pr", "list", "--repo", repo_name, "--state", "merged", "--limit", "50",
-                             "--json", "number,headRefName,baseRefName,closingIssuesReferences,files,changedFiles"]) or "[]")
+                             "--json", "number,headRefName,baseRefName,closingIssuesReferences,files,changedFiles,"
+                                       "isCrossRepository"]) or "[]")
     open_ = {i["number"] for i in items}
     closed = []
     for pr in merged:
         for n in sorted(pr_items(pr) & open_ - set(closed)):
             done(root, repo_name, n, run=run, take=True)
             closed.append(n)
-    # only an item branch carries a stack; a merged release PR (develop into main) moves nothing
-    into = {pr["headRefName"]: pr.get("baseRefName") for pr in merged if item_of(pr["headRefName"])}
+    # only an item branch carries a stack; a merged release PR (develop into main) moves nothing,
+    # nor does a fork's branch named like one here (#63)
+    into = {pr["headRefName"]: pr.get("baseRefName") for pr in merged
+            if item_of(pr["headRefName"]) and not pr.get("isCrossRepository")}
     for i in items:
         pr = i.get("pr") or {}
         if pr.get("base") in into:
@@ -490,8 +541,8 @@ def _marks(v) -> list:
     return out
 
 
-def _utc() -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+def _utc(ago=0) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - ago))
 
 
 def _mark(who: dict, phase, files=None) -> str:
@@ -505,9 +556,12 @@ def _mark(who: dict, phase, files=None) -> str:
 
 
 def _name(m: dict) -> str:
+    """Who holds a mark, for people and sessions to read: another person's login, or the kind of my
+    session and eight plain characters of its id. The id is free text in a comment (#77 audit L-1)."""
     kind, _, sid = m["id"].partition(":")
-    who = m["author"] if not m["mine"] else \
-        {"go": "a pulse go run", "terminal": "a terminal"}.get(kind, f"{kind} session {sid[:8]}")
+    sid = re.sub(r"[^0-9A-Za-z_.-]", "", sid)[:8]
+    who = m["author"] if not m["mine"] else {"go": "a pulse go run", "terminal": "a terminal", "claude": f"claude session {sid}",
+                                             "codex": f"codex session {sid}"}.get(kind, "another session")
     return who + (f" since {m['at'][:10]} {m['at'][11:16]} UTC" if m["at"] else "")
 
 
@@ -527,52 +581,214 @@ def _unmark(repo_name, cid, run) -> None:
         # already gone: another claimer cleaned up first
 
 
+def _lead(v, who: dict) -> tuple:
+    """Does this session hold the item: its mark leads and my login (its author) is assigned? Else
+    who holds it, or "" when this session has no mark on it."""
+    marks = _marks(v)
+    mine = next((m for m in marks if m["mine"] and m["id"] == who["id"]), None)
+    if mine is None:
+        return False, ""
+    if marks[0] is not mine:
+        return False, _name(marks[0])
+    held = mine["author"] in [a["login"] for a in v.get("assignees", [])]
+    return held, "" if held else (_people(v, mine["author"]) or "nobody")
+
+
+def holds(repo_name: str, n: int, run=gh, who=None) -> tuple:
+    """(True, "") while this session holds n; else (False, who holds it now), with "" for no mark of
+    this session on n. Asked before work leaves the clone: a lost claim pushes nothing (#77)."""
+    return _lead(_view(repo_name, n, run), who or holder())
+
+
+def taken(v, login: str, since="") -> str:
+    """Who has the item now (the people assigned, else who took it) when a person took it from my login
+    with release --take at `since` or later (#84); "" otherwise. Only the comment of someone who may push
+    counts; a hand-over between sessions of my login leaves none. A take read halfway, its comment there
+    and my marks not yet gone, counts too."""
+    for c in reversed(v.get("comments") or []):
+        said, by = TAKEN.fullmatch((c.get("body") or "").strip()), (c.get("author") or {}).get("login")
+        if said and by and login in said.group(1).split(", ") and c.get("authorAssociation") in WRITERS \
+                and (c.get("createdAt") or "") >= since:
+            return _people(v, login) or by
+    return ""
+
+
+def stamp(root: Path, sid: str, kind="") -> Path:
+    """The heartbeat stamp of an agent session in the shared git dir, or with a kind the note beside it:
+    .held (what its last beat or claim held, #84), .lost (the news it has not heard yet, #77)."""
+    return config.pulse_dir(root) / "beats" / (re.sub(r"[^\w.-]", "_", sid) + kind)
+
+
+def _note(root: Path, who: dict, kind: str) -> Path:
+    return stamp(root, who["id"].partition(":")[2], kind)
+
+
+def read_note(path: Path) -> str:
+    """A note beside a stamp, from a regular file with one link only, as keep_note writes it, and at most
+    NOTE_BYTES of it. The git dir is writable from a Codex phase of pulse go: a link, a hard link to another
+    file, or a FIFO planted there is neither followed nor read (#84 audit M-1). The file opened is the one
+    looked at, where os has no O_NOFOLLOW too (native Windows, audit L-4)."""
+    try:
+        seen = os.lstat(path)
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+    except OSError:
+        return ""
+    try:
+        st = os.fstat(fd)
+        ok = (st.st_dev, st.st_ino) == (seen.st_dev, seen.st_ino) and stat.S_ISREG(st.st_mode) and st.st_nlink == 1
+        return os.read(fd, NOTE_BYTES).decode("utf-8", "replace") if ok else ""
+    except OSError:
+        return ""
+    finally:
+        os.close(fd)
+
+
+def keep_note(path: Path, text: str) -> None:
+    """Write a note beside a stamp as a new file in its place: a link or a FIFO there is replaced, never
+    followed (#84 audit M-1)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, part = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(part, path)
+    finally:
+        if os.path.lexists(part):
+            os.unlink(part)
+
+
+def held(root: Path, who: dict) -> dict:
+    """What this session held at its last beat or claim, as its note says: {"at": since when, "items": [numbers]};
+    {} without a note, or for one of any other shape (#84 audit M-1): the time as _utc writes it, and at most
+    HELD_MAX items, since each costs a read of the board when it goes (audit L-3)."""
+    try:
+        note = json.loads(read_note(_note(root, who, ".held")))
+    except (ValueError, RecursionError):
+        return {}
+    ok = isinstance(note, dict) and isinstance(note.get("at"), str) and UTC.fullmatch(note["at"]) \
+        and isinstance(note.get("items"), list) and len(note["items"]) <= HELD_MAX \
+        and all(type(n) is int for n in note["items"])
+    return note if ok else {}
+
+
+def keep_held(root: Path, who: dict, at: str, items) -> None:
+    keep_note(_note(root, who, ".held"), json.dumps({"at": at, "items": sorted(items)}))
+
+
+def news(root: Path, who: dict, n: int, heard=False) -> str:
+    """The heartbeat's news about n that this session has not heard yet (a Codex session hears it at its next
+    prompt only), so pulse beat never says otherwise meanwhile (#84). heard: pulse beat says it now, so the note
+    keeps it no longer and the hook does not say it again (#99 FR-03)."""
+    path, head = _note(root, who, ".lost"), LOST.format(n)
+    lines = read_note(path).splitlines()
+    said = next((l for l in lines if l.startswith(head)), "")
+    if said and heard:
+        try:
+            keep_note(path, "\n".join(l for l in lines if not l.startswith(head)))
+        except OSError:
+            pass               # a note out of reach: the hook says it once more
+    return said
+
+
+def hold(root: Path, who: dict, n: int, on=True) -> None:
+    """A claim notes n for this session at once, a release takes it out: its heartbeat hears a take of n
+    before its first beat of n, and none after the session gave n back (#84 review). A note keeps its time
+    for the items it lists, one that lists none is dated anew; a note out of reach costs the claim nothing."""
+    note = held(root, who)
+    items = set(note.get("items", []))
+    try:
+        if (n in items) != on:
+            keep_held(root, who, note["at"] if items else _utc(SKEW), items | {n} if on else items - {n})
+    except OSError:
+        pass
+
+
+def _in_flight(v, cid: str) -> bool:
+    """A fresh claim mark before mine (comment cid) whose author is not assigned: a claim in flight,
+    its assignee not there yet, or a mark of someone who may not claim (#77)."""
+    assigned = {a["login"] for a in v.get("assignees", [])}
+    since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - CLAIMING))
+    for c in v.get("comments") or []:
+        if (c.get("url") or "").endswith(f"-{cid}"):
+            return False
+        if MARK.match(c.get("body") or "") and not c.get("viewerDidAuthor") and \
+                (c.get("author") or {}).get("login") not in assigned and (c.get("createdAt") or "") >= since:
+            return True
+    return False
+
+
+def _give_way(repo_name: str, n: int, marks: list, who: dict, run) -> None:
+    """A claim that lost takes its mark back, and my assignee unless another session of mine holds n."""
+    if not marks or not marks[0]["mine"]:                  # the winner is another person
+        run(["issue", "edit", str(n), "--repo", repo_name, "--remove-assignee", "@me"])
+    for m in marks:
+        if m["mine"] and m["id"] == who["id"]:
+            _unmark(repo_name, m["cid"], run)            # after the assignee
+
+
 def _other_session(v, who: dict):
     """The mark of another session of mine that holds the item, if one does."""
     marks = _marks(v)
     return marks[0] if marks and marks[0]["mine"] and marks[0]["id"] != who["id"] else None
 
 
-def _work(root: Path, n: int) -> str:
-    """Where the work on n is, for whoever holds it next: its branch, when origin has one. Asked of
-    origin itself, since the holder may have pushed after my last fetch."""
-    from pulse import ready    # ready reads the board through this module
-    for line in ready.net_git(root, "ls-remote", "--heads", "origin").stdout.splitlines():
-        branch = line.partition("\trefs/heads/")[2]
-        if item_of(branch) == n:
-            return f"; the work is on origin/{branch}"
-    return ""
+def docs_branch(root: Path, n: int) -> str:
+    """The docs branch of draft n on origin as the last fetch left it (docs/<n>-<slug>), where its analysis and
+    spec are (#99 FR-05); "" without one."""
+    from pulse import ready
+    refs = ready._git(root, "for-each-ref", "--format=%(refname:lstrip=3)", "refs/remotes/origin/docs").split()
+    return next((b for b in refs if b.startswith(f"docs/{n}-")), "")
+
+
+def _work(root: Path, n: int, v: dict) -> str:
+    """Where the work on n is, for whoever holds it next: for a draft (v, its issue) its docs branch (#99 FR-05),
+    else the branch pulse go would build on, never a spec branch (#83), when origin has it. Fetched just now,
+    since the holder may have pushed after my last fetch; offline, as the last fetch saw it."""
+    from pulse import go, ready    # both read the board through this module
+    ready.fetch(root, now=True)
+    b = docs_branch(root, n) if DRAFT in {l.get("name") for l in v.get("labels", [])} else \
+        go._branch_of(root, n, config.load(root)["base_branch"] or config.default_branch(root), origin_first=True)
+    # quoted as a shell reads it: an agent may run what the hint names (#83 audit L-1, as the start point, #78)
+    return "; the work is on " + ready.printable(shlex.quote(f"origin/{b}")) \
+        if b and ready._tip(root, f"refs/remotes/origin/{b}") else ""
 
 
 def claim(root: Path, repo_name: str, n: int, run=gh, who=None, take=False, blockers=True,
-          stacked_on=None, phase=None, files=None) -> tuple:
+          stacked_on=None, phase=None, files=None, approving=False, labels=None) -> tuple:
     """Assign me and mark this session. Another session is refused, even under my login;
     of two concurrent claims the older mark wins. `blockers=False` for planning, which does
     not wait for blockers; building does, except for the one blocker it stacks on. A draft
     is claimed for its spec work: no approval, no blockers. `files` go on the mark, so every
     ramp holds them without a fetch. A claim again of the session that holds n only puts new files
-    (a PLAN written since) or a new phase on its mark, whatever approval and blockers say by now."""
+    (a PLAN written since) or a new phase on its mark, whatever approval and blockers say by now.
+    `approving`: pulse approve --claim approves n right after, so no live map starts a run for it (#99 FR-08).
+    A claim again of an item with an open blocker refuses a build: the planner pushes the PLAN and gives the item
+    back (#99 fix round 1). `labels` gets the labels of n as the claim read them."""
     who = who or holder()
     v = _view(repo_name, n, run)
     open_blockers = [b["number"] for b in (v.get("blockedBy") or {}).get("nodes", [])
                      if b.get("state") == "OPEN" and b["number"] != stacked_on]
-    labels = {l["name"] for l in v.get("labels", [])}
+    names = {l["name"] for l in v.get("labels", [])}
+    if labels is not None:
+        labels.update(names)
     if v.get("state") != "OPEN":
         return False, f"#{n} is closed"
     login, marks = me(root, run=run), _marks(v)
     mine = next((m for m in marks if m["mine"] and m["id"] == who["id"]), None)
     again = mine is not None and marks[0] is mine and login in [a["login"] for a in v.get("assignees", [])]
-    if not again and not {APPROVED, LEGACY_READY, DRAFT} & labels:
+    if not again and not approving and not {APPROVED, LEGACY_READY, DRAFT} & names:
         return False, f"#{n} is not approved"
-    if not again and blockers and open_blockers and DRAFT not in labels:
-        return False, f"#{n} is blocked by " + ", ".join(f"#{b}" for b in open_blockers)
+    if blockers and open_blockers and DRAFT not in names:
+        refs = ", ".join(f"#{b}" for b in open_blockers)
+        return False, f"#{n} is blocked by {refs}" + (f": its build waits for {refs}; push the PLAN, then give it back: "
+                                                       f"pulse release {n}" if again else "")
     whom = _others(v, login)
     if whom:
-        return False, f"#{n} is held by {whom}; to hand it over: pulse release --take {n}" + _work(root, n)
+        return False, f"#{n} is held by {whom}; to hand it over: pulse release --take {n}" + _work(root, n, v)
     other = _other_session(v, who)
     if other and not take:
         return False, f"#{n} is held by {_name(other)}; if that session has ended: pulse claim --take {n}" + \
-            _work(root, n)
+            _work(root, n, v)
     for m in marks:
         if m["mine"] and m["id"] != who["id"]:
             _unmark(repo_name, m["cid"], run)            # taken over on purpose
@@ -604,15 +820,15 @@ def claim(root: Path, repo_name: str, n: int, run=gh, who=None, take=False, bloc
     except OSError:
         pass                   # the board decides the claim; a cache out of reach is stale for POLL s
     held, marks = [a["login"] for a in v.get("assignees", [])], _marks(v)
+    if marks and marks[0]["mine"] and marks[0]["id"] == who["id"] and _in_flight(v, marks[0]["cid"]):
+        time.sleep(WAIT)       # a claim in flight before mine: its assignee may show in a moment (#77)
+        v = _view(repo_name, n, run)
+        held, marks = [a["login"] for a in v.get("assignees", [])], _marks(v)
     if marks and marks[0]["mine"] and marks[0]["id"] == who["id"] and login in held:
         if mine:
             _KEPT[key] = mine
-        return True, f"claimed #{n}" + (_work(root, n) if other else "")
-    if not marks or not marks[0]["mine"]:                  # the winner is another person
-        run(["issue", "edit", str(n), "--repo", repo_name, "--remove-assignee", "@me"])
-    for m in marks:
-        if m["mine"] and m["id"] == who["id"]:
-            _unmark(repo_name, m["cid"], run)            # lost: take my mark back, after the assignee
+        return True, f"claimed #{n}" + (_work(root, n, v) if other else "")
+    _give_way(repo_name, n, marks, who, run)
     return False, f"#{n} went to {_name(marks[0]) if marks else 'nobody; try again'}"
 
 
@@ -629,8 +845,9 @@ _KEPT = {}                 # (root, repo, n, holder id) -> my mark on n as I las
 
 def beat(root: Path, repo_name: str, n: int, phase: str, run=gh, who=None) -> bool:
     """A sign of life: my mark on n names this phase and the time now; it keeps its age. False,
-    and nothing written, when this session holds no mark on n. Once my claim or a first beat
-    found the mark, a beat is one write; a mark gone since is looked up once more."""
+    and nothing written, when this session holds no mark on n, or its mark no longer leads (#77;
+    holds says who does). Once my claim or a first beat found the mark, a beat is one write; a
+    mark gone since is looked up once more."""
     who = who or holder()
     key = (root, repo_name, n, who["id"])
     mine = _KEPT.pop(key, None)
@@ -642,9 +859,10 @@ def beat(root: Path, repo_name: str, n: int, phase: str, run=gh, who=None) -> bo
             raise
         mine = None            # released and claimed anew, or taken over
     if not mine:
-        mine = next((m for m in _marks(_view(repo_name, n, run)) if m["mine"] and m["id"] == who["id"]), None)
-        if not mine:
+        v = _view(repo_name, n, run)
+        if not _lead(v, who)[0]:
             return False
+        mine = next(m for m in _marks(v) if m["mine"] and m["id"] == who["id"])
         _rewrite(repo_name, mine, who, phase, run)
     _KEPT[key] = mine
     drop_cache(root)
@@ -669,16 +887,18 @@ def release(root: Path, repo_name: str, n: int, run=gh, who=None, take=False, ta
     login = me(root, run=run)
     whom = _others(v, login)
     if whom and not take_person:
-        return False, f"#{n} is held by {whom}; to hand it over: pulse release --take {n}" + _work(root, n)
+        by = taken(v, login)
+        if by:                 # a person took it from me: nothing of it is mine to give back (#99 FR-04)
+            return True, f"#{n} was handed over with pulse release --take and went to {by}: nothing to give back"
+        return False, f"#{n} is held by {whom}; to hand it over: pulse release --take {n}" + _work(root, n, v)
     gone = [a["login"] for a in v.get("assignees", []) if a["login"] != login] if take_person else []
     other = _other_session(v, who)
     if other and not (take or take_person):
         return False, f"#{n} is held by {_name(other)}; if that session has ended: pulse release --take {n}" + \
-            _work(root, n)
+            _work(root, n, v)
     run(["issue", "edit", str(n), "--repo", repo_name, "--remove-assignee", ",".join(gone + ["@me"])])
     if gone:
-        run(["issue", "comment", str(n), "--repo", repo_name, "--body",
-             f"Released from {', '.join(gone)} by {login} with pulse release --take {n}."])
+        run(["issue", "comment", str(n), "--repo", repo_name, "--body", TAKE.format(", ".join(gone), login, n)])
     for m in _marks(v):
         if m["mine"] or m["author"] in gone:
             _unmark(repo_name, m["cid"], run)
@@ -686,7 +906,7 @@ def release(root: Path, repo_name: str, n: int, run=gh, who=None, take=False, ta
         leave_note(repo_name, n, note, login, who, run)
     drop_cache(root)
     return True, f"released #{n}" + (f" from {', '.join(gone)}" if gone else "") + \
-        (_work(root, n) if gone or other else "")
+        (_work(root, n, v) if gone or other else "")
 
 
 def leave_note(repo_name: str, n: int, text: str, by: str, who: dict, run=gh) -> None:

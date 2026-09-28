@@ -179,6 +179,12 @@ prefix_rule(
     decision = "prompt",
     justification = "A person decides who takes over a claim",
 )
+# The same for --drop-unpushed: pulse takes it right after release and nowhere else.
+prefix_rule(
+    pattern = ["pulse", "release", "--drop-unpushed"],
+    decision = "prompt",
+    justification = "A person decides that commits only this clone has are given up",
+)
 """
 
 
