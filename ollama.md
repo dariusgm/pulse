@@ -201,24 +201,78 @@ Models pulled during this session (in addition to `mistral:latest`, `codellama:1
 found, not the best coder. Fine for atomic steps; not trusted yet for a full feature
 build in one shot (see section 7).
 
-## 7. Open question / next task
+## 7. Two-tier plan-then-execute: tried it, does not work yet
 
-Plan: split pulse's build phase across two tiers — Sonnet (Claude) does planning
-(writing PLAN/`task.md` files), a local Ollama model via `opencode` executes the narrowed-
-down, atomic implementation steps. This matches what was actually proven to work here:
-`llama3.1:8b-instruct` is 100% reliable at a single, clearly-scoped tool call, but falls
-apart on an open-ended multi-part task in one prompt. For this split to work, each
-`task.md` step needs to be as atomic as the "write one file, run one git command" tests
-above — not a whole feature in one shot.
+Tested the actual plan: Sonnet (Claude) writes a `PLAN.md` plus one `tasks/NN-*.md` file
+per step, a local Ollama model via `opencode` executes each step as its own invocation.
+Four steps for a small tkinter todo app: skeleton, style, behavior, commit — each one
+described as a single `write`/`edit`/`bash` call, same shape as the "write one file, run
+one git command" tests that got 8/8 earlier.
 
-Still open: no code-specialized model has been found yet that is *also* reliably
-tool-call-compliant and fits the 8GB VRAM budget. `qwen2.5-coder` (7b and 14b) is a
-confirmed dead end regardless of size — the tool-call formatting bug reproduces even on a
-minimal prompt, so bigger quantizations won't fix it. Worth trying next, in order of
-likely fit: `codestral` (Mistral's code model, check tool-call template before pulling),
-or a Qwen2.5 **general-instruct** (non-coder) variant at 7B–14B, since only the
-coder-tuned variant showed the template bug — the base instruct model uses a different
-training recipe and may not share it. Verify any candidate the same way this session did:
-fetch its manifest + template from `registry.ollama.ai` before pulling, confirm
-`{{.Tools}}`/`{{.ToolCalls}}` presence, then run the raw-curl minimal test before ever
-routing it through OpenCode.
+**Result: 0/4 real tool calls**, with `llama3.1:8b-instruct-q4_K_M`, under a properly
+isolated environment (see the OpenCode isolation bug below — this run had no
+cross-contamination, so the result is trustworthy). Every step narrated the JSON as text
+instead of calling the tool, the same failure family every other model showed under
+OpenCode's real prompt.
+
+**The distinction that matters isn't step count, it's instruction complexity.** The
+8/8 tests used one-fact instructions ("write exactly `hello` to this file"). These four
+steps were still nominally "one tool call each," but each instruction carried several
+requirements to reason about (specific widget names, color values, behavioral rules) —
+and that alone was enough to collapse reliability back to zero, independent of total
+prompt/context size. So "atomic" for this class of local model means "requires no
+translation from requirement to code," not just "one call." A plan detailed enough to
+stay reliable would mean Sonnet writing the exact file content for the model to place —
+at which point the local model is a mechanical `write` executor, not something doing real
+coding, and it's worth asking whether that's still worth the overhead over just writing
+the files directly.
+
+**Conclusion: not worth continuing with any model tried so far.** None of
+`codellama:13b`, `qwen2.5-coder:7b`/`14b`, `mistral:7b-instruct`, `mistral-nemo:12b`, or
+`llama3.1:8b-instruct` can reliably turn a real requirement into a real tool call through
+OpenCode — only the last one is even reliable at all, and only for trivial, fully-
+specified content. Still open, if picked up again: no code-specialized model has been
+found that is *also* reliably tool-call-compliant and fits the 8GB VRAM budget.
+`qwen2.5-coder` is a confirmed dead end regardless of size (the formatting bug reproduces
+on a minimal prompt). Worth trying next, in order of likely fit: `codestral` (Mistral's
+code model), or a Qwen2.5 **general-instruct** (non-coder) variant, since only the
+coder-tuned template showed the bug. Verify any candidate the way this session did: fetch
+its manifest + template from `registry.ollama.ai` before pulling, confirm
+`{{.Tools}}`/`{{.ToolCalls}}` presence, run the raw-curl minimal test, *then* the
+multi-requirement-instruction test — passing the first without the second is not enough,
+as `mistral-nemo` and `llama3.1` both showed.
+
+## 8. OpenCode isolation bug: it can silently act on the wrong project, including committing
+
+While running the plan-then-execute test above, three separate `opencode run`
+invocations — each launched with `cwd` correctly set to a scratch directory via
+`subprocess.run(..., cwd=ROOT)` — silently also bootstrapped `/home/darius/RustroverProjects/pulse`
+as a second instance, and that second one became the active session every time (confirmed
+by matching session IDs against OpenCode's own log, `~/.local/share/opencode/log/opencode.log`).
+One resulting session, days apart from any invocation, autonomously ran `git add -A && git
+commit` with a self-invented message. Across the session this happened three times,
+producing three unauthorized commits on the real repo's live branch (cleaned up via
+`git reset --soft` + selective re-staging once found; nothing had been pushed).
+
+**Root cause (likely)**: OpenCode's session/project cache lives under
+`~/.local/share/opencode` (sqlite `opencode.db` + `log/`), keyed off `$HOME`, not off the
+invoking process's `cwd`. Once any `opencode` command — even a harmless `--version` or
+`providers list` — touches that cache from the ambient shell's default directory, later
+invocations from a *different* `cwd` can still reattach to that same stale
+session/project, ignoring the `cwd` they were actually given.
+
+**Fix that worked, verified by re-reading OpenCode's own log**: give it a fully isolated
+`$HOME` per test run, with a fresh `~/.local/share/opencode` (no session history to
+reattach to) and a copy of the real `~/.config/opencode/opencode.jsonc` (so provider/model
+resolution still works) and `~/.local/share/opencode/auth.json`:
+
+```python
+env = dict(os.environ)
+env["HOME"] = str(ISOLATED_HOME)   # pre-populated with .config/opencode/opencode.jsonc
+subprocess.run(argv, cwd=ROOT, env=env, ...)
+```
+
+After this, OpenCode's log showed a single, correct bootstrap (`projectID=global`, no
+history to reuse) and the real pulse repo stayed untouched across the next full run.
+**Anyone running OpenCode headless near a real project directory should isolate `$HOME`
+this way — `cwd` alone is not sufficient containment.**
