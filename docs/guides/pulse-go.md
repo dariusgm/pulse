@@ -112,7 +112,7 @@ agent_timeout = 60        # minutes; a hung agent is stopped with its child proc
 [agents]
 claude = "claude -p --allowedTools {allow} --output-format json --permission-mode acceptEdits {prompt}"
 codex = "codex exec --json --sandbox workspace-write --add-dir {gitdir} {prompt}"
-opencode = "opencode run --auto --format json --model ollama/mistral:7b-instruct {prompt}"
+opencode = "opencode run --auto --format json --model ollama/llama3.1:8b-instruct-q4_K_M {prompt}"
 ```
 
 A headless agent cannot answer a permission prompt, so it runs only what its template allows. `{allow}` lets Claude Code run `verify`, the `verify:` commands of the item's PLAN, and five git commands; `{gitdir}` lets Codex commit from its worktree. [Agent templates](../reference/configuration#agent-templates) says what each covers and how to fix a template copied from an older Pulse. A `verify:` command of the PLAN is allowed only when it starts with a program of `verify` or with a script of the repository, such as `bin/pulse check`; a shell or interpreter given code, a download, `npx`, `env`, or `sudo` never is, and the item log and the pull request name each command left out. An agent missing on `PATH` runs from the newest VS Code extension that bundles it. The review and audit sessions start from `review_agent`, else from the agent that built the item. Pulse never bypasses an approval.

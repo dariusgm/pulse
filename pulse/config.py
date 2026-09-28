@@ -39,10 +39,20 @@ PARALLEL = ("off", "items", "max")
 # --auto approves what a headless run cannot ask about; --format json is its own schema, not
 # Claude's or Codex's, so _usage() finds nothing in it and usage.jsonl carries no tokens or cost
 # for it, only the model from --model and the phase's seconds. ollama/... picks a local model
-# through Ollama; a model of your own replaces mistral:7b-instruct in .pulse/config.toml.
+# through Ollama; a model of your own replaces llama3.1:8b-instruct-q4_K_M in .pulse/config.toml.
+# Whatever model runs needs tool-calling in its chat template ({{.Tools}}/{{.ToolCalls}}, ollama
+# show <model> --template shows it): --auto drives OpenCode through edits, shell, and commits with
+# tool calls, and a model without that support fails the very first phase (ProviderModelNotFoundError
+# or "does not support tools"), not something --auto or an --experimental run flag works around.
+# Nor is passing that check enough on its own: a model can have the right template and still not
+# reliably use it once OpenCode's own long prompt is what triggers it, tool call by tool call, not
+# in one shot; llama3.1 here is the most tool-call-reliable local model tried, not the best coder,
+# and a build this weak on planning still gets the usual fix rounds and stays a draft, same as any.
+# OpenCode also needs its own [[provider]] entry for a local Ollama server (opencode.ai/docs/providers),
+# since it does not detect one on its own: pulse never writes that config, only the CLI call.
 AGENTS = {"claude": "claude -p --allowedTools {allow} --output-format json --permission-mode acceptEdits {prompt}",
           "codex": "codex exec --json --sandbox workspace-write --add-dir {gitdir} {prompt}",
-          "opencode": "opencode run --auto --format json --model ollama/mistral:7b-instruct {prompt}"}
+          "opencode": "opencode run --auto --format json --model ollama/llama3.1:8b-instruct-q4_K_M {prompt}"}
 # Where a VS Code extension keeps the agent it bundles, for people who have only the extension.
 BUNDLED = {"claude": "anthropic.claude-code-*/resources/native-binary/claude",
            "codex": "openai.chatgpt-*/bin/*/codex"}
