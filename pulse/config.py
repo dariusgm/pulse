@@ -8,12 +8,15 @@ from __future__ import annotations
 import functools
 import itertools
 import json
+import os
 import re
 import shlex
 import shutil
 import subprocess
 import sys
+import urllib.request
 from pathlib import Path
+from urllib.error import URLError
 
 try:
     import tomllib
@@ -208,6 +211,29 @@ def default_branch(root: Path) -> str:
     name = out.stdout.strip()
     return name.removeprefix("refs/remotes/origin/") if out.returncode == 0 and name.startswith(
         "refs/remotes/origin/") else "main"
+
+
+def ollama_model(template: str) -> str:
+    """The ollama/... model an agent template names, or "" for a template that runs elsewhere."""
+    m = re.search(r"\bollama/(\S+)", template)
+    return m.group(1) if m else ""
+
+
+def ollama_host() -> str:
+    """Ollama's own API base URL: OLLAMA_HOST if set (a bare host:port gets http:// added)."""
+    host = os.environ.get("OLLAMA_HOST", "127.0.0.1:11434")
+    return host if "://" in host else f"http://{host}"
+
+
+def ollama_up(host: str = None) -> bool:
+    """Whether an Ollama server answers at host: its API, the same one `ollama run` itself talks to.
+    A template naming an ollama/... model checks this before claiming anything, so a phase reuses
+    a model already resident on the GPU instead of `ollama run` loading and unloading it per call."""
+    try:
+        with urllib.request.urlopen(f"{host or ollama_host()}/api/tags", timeout=1) as r:
+            return r.status == 200
+    except (URLError, OSError, ValueError):
+        return False
 
 
 def write(root: Path, **values) -> Path:
