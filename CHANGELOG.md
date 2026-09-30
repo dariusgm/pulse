@@ -5,6 +5,21 @@ All notable changes to Pulse are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- The built-in `opencode` template names no model: OpenCode runs the one its
+  own config sets, a hosted provider or a local one such as Ollama or
+  llama.cpp.
+
+### Fixed
+
+- `pulse go` starts each agent with `PWD` set to its worktree. Only the
+  working directory was set, so OpenCode, which takes its project
+  directory from `$PWD`, edited and committed in the directory `pulse go`
+  was started from instead of the item's worktree.
+
 ## [0.1.5] - 2026-09-27
 
 ### Added

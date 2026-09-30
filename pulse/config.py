@@ -8,15 +8,12 @@ from __future__ import annotations
 import functools
 import itertools
 import json
-import os
 import re
 import shlex
 import shutil
 import subprocess
 import sys
-import urllib.request
 from pathlib import Path
-from urllib.error import URLError
 
 try:
     import tomllib
@@ -38,21 +35,16 @@ PARALLEL = ("off", "items", "max")
 # opencode needs neither placeholder: it commits its own edits in the worktree, unsandboxed.
 # --auto approves what a headless run cannot ask about; --format json is its own schema, not
 # Claude's or Codex's, so _usage() finds nothing in it and usage.jsonl carries no tokens or cost
-# for it, only the model from --model and the phase's seconds. ollama/... picks a local model
-# through Ollama; a model of your own replaces llama3.1:8b-instruct-q4_K_M in .pulse/config.toml.
-# Whatever model runs needs tool-calling in its chat template ({{.Tools}}/{{.ToolCalls}}, ollama
-# show <model> --template shows it): --auto drives OpenCode through edits, shell, and commits with
-# tool calls, and a model without that support fails the very first phase (ProviderModelNotFoundError
-# or "does not support tools"), not something --auto or an --experimental run flag works around.
-# Nor is passing that check enough on its own: a model can have the right template and still not
-# reliably use it once OpenCode's own long prompt is what triggers it, tool call by tool call, not
-# in one shot; llama3.1 here is the most tool-call-reliable local model tried, not the best coder,
-# and a build this weak on planning still gets the usual fix rounds and stays a draft, same as any.
-# OpenCode also needs its own [[provider]] entry for a local Ollama server (opencode.ai/docs/providers),
-# since it does not detect one on its own: pulse never writes that config, only the CLI call.
+# for it, only what the template's own --model names and the phase's seconds. opencode names no
+# model: OpenCode runs the one its own config sets ("model" in ~/.config/opencode/opencode.jsonc,
+# with the provider entry for a hosted or local one, Ollama or llama.cpp, opencode.ai/docs/providers);
+# pulse never writes that config. --auto drives OpenCode through edits, shell, and commits with
+# tool calls, so the model needs tool calling, and a context window of at least 16k tokens:
+# OpenCode's own prompt alone runs past 10k. A weak model still gets the usual fix rounds and
+# stays a draft, same as any agent's build.
 AGENTS = {"claude": "claude -p --allowedTools {allow} --output-format json --permission-mode acceptEdits {prompt}",
           "codex": "codex exec --json --sandbox workspace-write --add-dir {gitdir} {prompt}",
-          "opencode": "opencode run --auto --format json --model ollama/llama3.1:8b-instruct-q4_K_M {prompt}"}
+          "opencode": "opencode run --auto --format json {prompt}"}
 # Where a VS Code extension keeps the agent it bundles, for people who have only the extension.
 BUNDLED = {"claude": "anthropic.claude-code-*/resources/native-binary/claude",
            "codex": "openai.chatgpt-*/bin/*/codex"}
@@ -221,29 +213,6 @@ def default_branch(root: Path) -> str:
     name = out.stdout.strip()
     return name.removeprefix("refs/remotes/origin/") if out.returncode == 0 and name.startswith(
         "refs/remotes/origin/") else "main"
-
-
-def ollama_model(template: str) -> str:
-    """The ollama/... model an agent template names, or "" for a template that runs elsewhere."""
-    m = re.search(r"\bollama/(\S+)", template)
-    return m.group(1) if m else ""
-
-
-def ollama_host() -> str:
-    """Ollama's own API base URL: OLLAMA_HOST if set (a bare host:port gets http:// added)."""
-    host = os.environ.get("OLLAMA_HOST", "127.0.0.1:11434")
-    return host if "://" in host else f"http://{host}"
-
-
-def ollama_up(host: str = None) -> bool:
-    """Whether an Ollama server answers at host: its API, the same one `ollama run` itself talks to.
-    A template naming an ollama/... model checks this before claiming anything, so a phase reuses
-    a model already resident on the GPU instead of `ollama run` loading and unloading it per call."""
-    try:
-        with urllib.request.urlopen(f"{host or ollama_host()}/api/tags", timeout=1) as r:
-            return r.status == 200
-    except (URLError, OSError, ValueError):
-        return False
 
 
 def write(root: Path, **values) -> Path:

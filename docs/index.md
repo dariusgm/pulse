@@ -39,7 +39,7 @@ hero:
 
 ## Quick start
 
-Pulse runs in Claude Code and Codex, in the terminal and in the VS Code extension; support for GitHub Copilot, Cursor, Gemini CLI, and OpenCode will follow. You need Python 3.9 or newer, the GitHub CLI `gh` 2.94 or newer, and a GitHub repository. In Claude Code:
+Pulse runs in Claude Code and Codex, in the terminal and in the VS Code extension; `pulse go` also starts OpenCode as a headless agent, for local models through Ollama or llama.cpp; support for GitHub Copilot, Cursor, and Gemini CLI will follow. You need Python 3.9 or newer, the GitHub CLI `gh` 2.94 or newer, and a GitHub repository. In Claude Code:
 
 ```bash
 claude plugin marketplace add https://github.com/pssah4/pulse.git

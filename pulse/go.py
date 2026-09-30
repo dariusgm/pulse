@@ -299,8 +299,12 @@ def _launch(job: Job, argv: list, logs: Path, phase: str, cwd: Path = None) -> N
     job.phase, job.rc, job.why = phase, None, ""
     job.head = _git(job.worktree, "rev-parse", "HEAD").stdout.strip()
     job.guard = _guard(job, logs.parents[1])
-    job.proc = subprocess.Popen(argv, cwd=cwd or job.worktree, stdin=subprocess.DEVNULL, stdout=job.log,
-                                stderr=subprocess.STDOUT, start_new_session=True, env=job.env)
+    where = cwd or job.worktree
+    # Popen(cwd=) leaves $PWD as pulse go's own; OpenCode takes its project directory from it and would
+    # edit and commit there, not in the worktree.
+    job.proc = subprocess.Popen(argv, cwd=where, stdin=subprocess.DEVNULL, stdout=job.log,
+                                stderr=subprocess.STDOUT, start_new_session=True,
+                                env={**(job.env if job.env is not None else os.environ), "PWD": str(where)})
     job.started = time.time()
     _group(logs, job.number, job.proc.pid)
 
@@ -941,22 +945,17 @@ def _claim(root: Path, repo: str, item: dict, gh_run, who: dict, kind: str, file
 
 
 def _missing(template: str) -> str:
-    """Why an agent template cannot run here, else "": its command is not installed, or it names an
-    ollama/... model and Ollama's API is not reachable (checked once here, at the run's start, same
-    as F7.01 for a missing binary; never mid-run for a model server that stops after)."""
+    """The command of an agent template when it is not installed here, else "". A template that does
+    not split fails at its start, as any other start."""
     try:
         cmd = config.agent_argv(template, "")[0]
     except (ValueError, IndexError):
         return ""
-    if not shutil.which(cmd):
-        return f"{cmd} not found"
-    model = config.ollama_model(template)
-    return f"ollama serve not reachable at {config.ollama_host()}" if model and not config.ollama_up() else ""
+    return "" if shutil.which(cmd) else cmd
 
 
 def _slots(spec: str, cap: int, cfg: dict) -> dict:
-    """The agents of this run with their slots; one that is not installed, or whose ollama/... model
-    has no server answering, claims nothing (F7.01)."""
+    """The agents of this run with their slots; one that is not installed claims nothing (F7.01)."""
     try:
         slots = config.agent_slots(spec, cap)
     except ValueError as e:
@@ -968,7 +967,7 @@ def _slots(spec: str, cap: int, cfg: dict) -> dict:
         raise state.StateError("no agent given: agent = \"claude\" or \"claude:2,codex:2\"")
     gone = {a: c for a in [*slots, cfg["review_agent"]] if a for c in [_missing(cfg["agents"][a])] if c}
     if gone:
-        why = "; ".join(f"agent {a}: {c}" for a, c in gone.items())
+        why = "; ".join(f"agent {a}: {c} not found" for a, c in gone.items())
         if cfg["review_agent"] in gone or not set(slots) - set(gone):
             raise state.StateError(why)            # nobody left to build, or nobody to review
         print(f"pulse go: {why}; it claims nothing in this run", file=sys.stderr)

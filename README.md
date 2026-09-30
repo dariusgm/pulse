@@ -15,7 +15,7 @@ Coding agents are fast alone and chaotic together. Pulse plans the dependencies 
   <img src="docs/public/pulse-map.gif" alt="The Pulse map in time-lapse: Sebastian runs five agents, one branch per line with the feature it builds and what its agents do, each with a light (green working, yellow waiting for him, red a failing test); Alice and Bob each work on several items, lit from GitHub (waiting for his review, failing checks); the board counts ready, in progress, in review, and blocked work; the ramp shows the ready work that goes out next." width="640" />
 </p>
 
-Runs in **Claude Code** and **Codex**, in the terminal and in the VS Code extension. Support for GitHub Copilot, Cursor, Gemini CLI, and OpenCode will follow.
+Runs in **Claude Code** and **Codex**, in the terminal and in the VS Code extension. `pulse go` also starts OpenCode as a headless agent, for local models through Ollama or llama.cpp. Support for GitHub Copilot, Cursor, and Gemini CLI will follow.
 
 ## Three parts
 
